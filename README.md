@@ -90,3 +90,8 @@ The renderer now burns an ASS caption track into the final MP4. Captions use bol
 ### Director-triggered smart punch-ins (development branch)
 
 When the AI Director returns validated opening-hook segment indexes, the renderer now applies a subtle 6% punch-in over those moments. The zoom ramps in and out smoothly, and its timing is remapped after long-silence removal. If the Director is unavailable or does not identify a hook, the expression stays at native 1x scale. Invalid indexes are ignored; the zoom strength is bounded. This is a restrained emphasis effect, not gesture-aware camera direction, and it does not add B-roll or graphics.
+
+
+### Animated captions and B-roll planning
+
+Caption events now use subtle fade-in/fade-out animation while retaining white text and Director-selected yellow keyword emphasis. The Director's B-roll suggestions are exported as `broll_shotlist.json` with source and edited-timeline timestamps. This is a timecoded production brief only: assets are not automatically fetched or inserted. B-roll must be supplied by the user or sourced from a licensed provider before insertion; the renderer does not fabricate or silently download stock footage.
