@@ -4,7 +4,6 @@ This is not 3D tracking or segmentation. It estimates a neck anchor from a face 
 """
 from __future__ import annotations
 import json
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -23,29 +22,30 @@ def sample_face_anchors(video: Path, sample_fps: float = 1.0, max_width: int = 4
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
     duration = frame_count / fps if fps else 0
-    step = max(1, int(round(fps / sample_fps)))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     anchors = []
-    index = 0
-    while True:
+    sample_step = 1.0 / max(0.2, min(sample_fps, 2.0))
+    sample_time = 0.0
+    while sample_time < duration:
+        cap.set(cv2.CAP_PROP_POS_MSEC, sample_time * 1000)
         ok, frame = cap.read()
         if not ok:
             break
-        if index % step == 0:
-            h, w = frame.shape[:2]
-            scale = min(1.0, max_width / max(1, w))
-            small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale)))) if scale < 1 else frame
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(24, 24))
-            if len(faces):
-                x, y, fw, fh = max(faces, key=lambda box: box[2] * box[3])
-                factor = 1.0 / scale
-                # Estimate the neck anchor below the detected face; approximate only.
-                center_x = (x + fw / 2) * factor
-                neck_y = (y + fh * 1.12) * factor
-                anchors.append({"t": round(index / fps, 3), "x": round(center_x, 1), "y": round(neck_y, 1), "face_w": round(fw * factor, 1)})
-        index += 1
+        h, w = frame.shape[:2]
+        scale = min(1.0, max_width / max(1, w))
+        small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale)))) if scale < 1 else frame
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(24, 24))
+        if len(faces):
+            x, y, fw, fh = max(faces, key=lambda box: box[2] * box[3])
+            factor = 1.0 / scale
+            center_x = (x + fw / 2) * factor
+            neck_y = (y + fh * 1.12) * factor
+            anchors.append({"t": round(sample_time, 3), "x": round(center_x, 1), "y": round(neck_y, 1), "face_w": round(fw * factor, 1)})
+        sample_time += sample_step
     cap.release()
-    return {"duration": duration, "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0), "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0), "anchors": anchors, "sample_fps": sample_fps}
+    return {"duration": duration, "width": width, "height": height, "anchors": anchors, "sample_fps": sample_fps}
 
 def _interpolate_anchors(anchors: list[dict[str, float]], duration: float, width: int, height: int, step: float = 1.0) -> list[dict[str, float]]:
     if not anchors:
@@ -68,8 +68,10 @@ def _piecewise_expression(points: list[dict[str, float]], key: str) -> str:
     expression = f"{points[-1][key]:.2f}"
     for left, right in reversed(list(zip(points[:-1], points[1:]))):
         dt = max(0.001, right["t"] - left["t"])
-        segment = f"({left[key]:.2f}+({right[key]-left[key]:.2f})*(t-{left[\"t\"]:.2f})/{dt:.3f})"
-        expression = f"if(lt(t,{right[\"t\"]:.2f}),{segment},{expression})"
+        left_time = left["t"]
+        right_time = right["t"]
+        segment = f"({left[key]:.2f}+({right[key]-left[key]:.2f})*(t-{left_time:.2f})/{dt:.3f})"
+        expression = f"if(lt(t,{right_time:.2f}),{segment},{expression})"
     return expression
 
 def build_orbit_drawtext_filter(text: str, anchors: list[dict[str, float]], duration: float) -> str:
