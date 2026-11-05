@@ -10,10 +10,11 @@ class CreativeDirectionTests(unittest.TestCase):
         self.assertEqual(plan["effect"]["position"], "top")
         self.assertIn("drawtext=", build_drawtext_filter(plan["effect"]))
 
-    def test_neck_orbit_is_not_misrepresented_as_flat_text(self):
+    def test_neck_orbit_uses_face_tracked_2d_approximation(self):
         plan = interpret_creative_direction('Make "LEVEL UP" orbit around the neck and follow the person.')
-        self.assertEqual(plan["status"], "needs_advanced_tracking")
-        self.assertEqual(plan["requested_effect"], "subject_tracked_3d_orbit")
+        self.assertEqual(plan["status"], "supported_2d_approximation")
+        self.assertEqual(plan["effect"]["type"], "neck_orbit_2d")
+        self.assertIn("does not provide true 3D", plan["note"])
 
     def test_missing_exact_words_requests_clarification(self):
         plan = interpret_creative_direction("Add a stylish title at the top")
