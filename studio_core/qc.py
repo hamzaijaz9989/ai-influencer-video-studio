@@ -58,6 +58,10 @@ def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
     has_audio = any(s.get("codec_type") == "audio" for s in streams)
     duration = float(probe.get("format", {}).get("duration", 0))
     size = int(probe.get("format", {}).get("size", 0))
+    decode = subprocess.run([
+        "ffmpeg", "-v", "error", "-i", str(video), "-f", "null", "-"
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    decode_ok = decode.returncode == 0 and not decode.stderr.strip()
     srt = validate_srt(captions)
     checks = {
         "file_exists": video.is_file(),
@@ -67,6 +71,7 @@ def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
         "expected_resolution": bool(vstreams and vstreams[0].get("width") == expected_width
                                     and vstreams[0].get("height") == expected_height),
         "positive_duration": duration > 0,
+        "full_decode_integrity": decode_ok,
         "captions_valid": srt["valid"],
     }
     return {
@@ -76,5 +81,6 @@ def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
         "size_bytes": size,
         "streams": streams,
         "captions": srt,
+        "decode_error": decode.stderr[-2000:] if not decode_ok else "",
         "failed_checks": [key for key, value in checks.items() if not value],
     }
