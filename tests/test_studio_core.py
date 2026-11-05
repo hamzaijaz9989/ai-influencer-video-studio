@@ -5,6 +5,7 @@ from pathlib import Path
 
 from studio_core.editorial import review_repeated_lines
 from studio_core.job_store import JobStore
+from studio import build_segment_encode_command
 
 
 class JobStoreTests(unittest.TestCase):
@@ -40,6 +41,19 @@ class EditorialTests(unittest.TestCase):
         self.assertIsNone(found[0]["review_first_segment_index"])
         self.assertTrue(found[0]["first_signals"]["complete_sentence_punctuation"])
         self.assertIn("transcript_completeness_score", found[0]["second_signals"])
+
+
+
+class SegmentCommandTests(unittest.TestCase):
+    def test_uses_duration_not_absolute_end_timestamp(self):
+        args = build_segment_encode_command(Path("source.mp4"), Path("part.mp4"), 12.5, 18.0)
+        self.assertEqual(args[args.index("-ss") + 1], "12.500")
+        self.assertEqual(args[args.index("-t") + 1], "5.500")
+        self.assertNotIn("-to", args)
+
+    def test_rejects_invalid_interval(self):
+        with self.assertRaises(ValueError):
+            build_segment_encode_command(Path("source.mp4"), Path("part.mp4"), 5.0, 5.0)
 
 
 if __name__ == "__main__":
