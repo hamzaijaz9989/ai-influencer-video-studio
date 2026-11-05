@@ -68,7 +68,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         parts = re.findall(r"\w+|[^\w]+", str(segment.get("text", "")), flags=re.UNICODE)
         styled = []
         for part in parts:
-            escaped = part.replace("{", "\\{").replace("}", "\\}")
+            escaped = part.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
             if part.casefold() in selected and re.search(r"\w", part):
                 styled.append("{\\c&H0000FFFF&}" + escaped + "{\\c&H00FFFFFF&}")
             else:
