@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+outputs/
+work/
+*.mp4
+*.wav
+*.srt
+*.ass
