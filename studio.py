@@ -19,6 +19,7 @@ from studio_core.job_store import JobStore
 from studio_core.director import create_director_plan
 from studio_core.visual import analyze_video
 from studio_core.qc import run_export_qc
+from studio_core.captions import build_ass
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -195,6 +196,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     silence_cuts = detect_long_silences(source, duration)
     keep = retained_intervals(duration, silence_cuts)
     caption_count = build_srt(segments, silence_cuts, job_dir / "captions.srt")
+    styled_caption_count = build_ass(segments, silence_cuts, job_dir / "captions.ass", director_plan)
 
     parts = []
     for index, (start, end) in enumerate(keep):
@@ -216,14 +218,11 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
              str(concat_file), "-c", "copy", str(joined)])
 
     final_path = job_dir / "FINAL_REVIEW.mp4"
-    srt_path = str(job_dir / "captions.srt").replace("\\", "/").replace(":", "\\:")
+    ass_path = str(job_dir / "captions.ass").replace("\\", "/").replace(":", "\\:")
     video_filter = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
         f"crop=1080:1920:x='max(0,min(iw-ow,iw*{crop_center:.4f}-ow/2))':y=0,setsar=1,"
-        f"subtitles='{srt_path}':force_style='FontName=DejaVu Sans,"
-        "FontSize=17,Bold=1,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,BorderStyle=1,Outline=3,"
-        "Shadow=1,Alignment=2,MarginV=115,WrapStyle=2'"
+        f"subtitles='{ass_path}'"
     )
     command([
         "ffmpeg", "-y", "-i", str(joined), "-vf", video_filter,
@@ -246,6 +245,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         "removed_silence_intervals": silence_cuts,
         "transcript_segments": len(segments),
         "caption_cues": caption_count,
+        "styled_caption_cues": styled_caption_count,
         "output_bytes": int(qc_probe["format"]["size"]),
         "streams": streams,
         "audio_stream_present": any(s.get("codec_type") == "audio" for s in streams),
