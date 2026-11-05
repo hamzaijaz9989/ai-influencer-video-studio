@@ -26,6 +26,7 @@ from studio_core.broll import build_broll_shotlist
 from studio_core.revisions import load_revisions
 from studio_core.broll_assets import resolve_broll_assets, build_broll_filter
 from studio_core.creative_direction import interpret_creative_direction, build_drawtext_filter, apply_neck_orbit
+from studio_core.self_improvement import load_profile, recommend_revisions, record_render
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
