@@ -270,6 +270,26 @@ def run_render(selected: str, creative_prompt: str = "") -> Iterator[tuple[str, 
         yield "\n".join(lines[-100:]) + f"\n\nProcessing stopped with exit code {code}. Check the error log in OUTPUT.", dashboard_status(), preview
 
 
+def enhance_selected_video(selected: str, strength: str, denoise: bool) -> tuple[str, str]:
+    """Run the standalone enhancer without invoking transcription or editing."""
+    ensure_dirs()
+    if not selected:
+        return "Choose a video first.", ""
+    source = Path(selected).expanduser()
+    try:
+        source = source.resolve(strict=True)
+        if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+            return "The selected source is not a supported video file.", ""
+        from studio_core.enhancer import enhance_video
+        destination = OUTPUT / "ENHANCED" / f"{source.stem}_enhanced.mp4"
+        if destination.exists():
+            destination = OUTPUT / "ENHANCED" / f"{source.stem}_enhanced_{secrets.token_hex(3)}.mp4"
+        result = enhance_video(source, destination, strength=strength, denoise=denoise)
+        return f"Enhancement complete. Original preserved. Output: **{result.name}**", str(result)
+    except Exception as exc:
+        return f"Enhancement failed: {exc}", ""
+
+
 def refresh_outputs() -> tuple[gr.Dropdown, str]:
     videos = output_videos()
     return gr.update(choices=videos, value=videos[0] if videos else None), dashboard_status()
@@ -352,6 +372,26 @@ def build_app() -> gr.Blocks:
                     upload_button = gr.Button("Add phone video to project", variant="secondary")
                     upload_message = gr.Markdown()
 
+            with gr.Tab("Video Enhancer"):
+                gr.Markdown("## Enhance any video independently")
+                gr.Markdown("Works with supported MP4, MOV, MKV, M4V, AVI and WebM files. Preserves the original aspect ratio, resolution, frame rate and audio; exports a new enhanced MP4. It does not run captions, silence removal or influencer editing.")
+                enhancer_source = gr.Dropdown(
+                    label="Choose any source video",
+                    choices=available_sources(),
+                    value=None,
+                    interactive=True,
+                )
+                enhancer_refresh = gr.Button("Refresh video list", variant="secondary")
+                enhancer_strength = gr.Radio(
+                    choices=["light", "balanced", "strong"],
+                    value="balanced",
+                    label="Enhancement strength",
+                )
+                enhancer_denoise = gr.Checkbox(value=True, label="Reduce visible noise")
+                enhancer_button = gr.Button("Enhance video", variant="primary", size="lg")
+                enhancer_status = gr.Markdown()
+                enhancer_preview = gr.Video(label="Enhanced video preview")
+
             with gr.Tab("Review & export"):
                 gr.Markdown("### Rendered videos\nChoose an export to preview it. Quality reports and transcripts are saved in the same output folder in Google Drive.")
                 output_choice = gr.Dropdown(label="Completed exports", choices=output_videos())
@@ -360,6 +400,8 @@ def build_app() -> gr.Blocks:
                 output_preview = gr.Video(label="Final review video")
                 output_file = gr.File(label="Download selected MP4")
                 qc_note = gr.Markdown("Always watch the full export and inspect its QC report before publishing.")
+        enhancer_refresh.click(refresh_sources, outputs=[enhancer_source, status])
+        enhancer_button.click(enhance_selected_video, inputs=[enhancer_source, enhancer_strength, enhancer_denoise], outputs=[enhancer_status, enhancer_preview])
         drive_refresh.click(refresh_drive_videos, outputs=[drive_video, drive_message])
         drive_select.click(select_drive_video, inputs=drive_video, outputs=[source, drive_message])
         upload_button.click(upload_video, inputs=upload, outputs=[source, upload_message])
