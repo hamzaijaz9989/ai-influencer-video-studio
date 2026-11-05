@@ -247,7 +247,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     )
     ffmpeg_args = ["ffmpeg", "-y", "-i", str(joined)]
     for asset in broll_assets:
-        ffmpeg_args.extend(["-i", asset["asset_path"]])
+        ffmpeg_args.extend(["-stream_loop", "-1", "-i", asset["asset_path"]])
     graph, final_label = build_broll_filter("base", broll_assets, 1)
     graph = f"[0:v]{base_filter}[base]" + (f";{graph}" if graph else "")
     if graph and broll_assets:
