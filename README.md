@@ -73,3 +73,10 @@ Each processed video now receives a `director_plan.json` alongside the transcrip
 - B-roll ideas and caption emphasis.
 
 The plan is index-validated before it is saved. No dialogue is automatically deleted. If the API key is missing, the provider is unavailable, or the response cannot be validated, the worker writes a conservative local fallback plan instead. Set `GEMINI_MODEL` to select a model available to your API key; the default is `gemini-2.0-flash`.
+
+
+## Visual analysis and export QC (development branch)
+
+The development branch samples frames with OpenCV to estimate frontal-face positions, exposure and candidate scene changes. It writes `visual_analysis.json`. Where a horizontal crop is required, the median detected face center is used as a conservative static framing anchor; vertical 9:16 source footage naturally needs little or no horizontal reframing. This is not gesture, gaze, identity or emotion recognition, and it is not a shot-by-shot face tracker.
+
+After rendering, deterministic checks validate the output video stream, audio stream, expected 1080x1920 resolution, positive duration, non-empty file and SRT cue structure/timing. Results are written to `qc_report.json`; a failed export check marks the job as failed rather than silently accepting a broken output. These checks do not replace a human visual/audio review.
