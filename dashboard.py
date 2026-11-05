@@ -316,6 +316,14 @@ def build_app() -> gr.Blocks:
                     interactive=True,
                 )
                 source_refresh = gr.Button("Refresh selected video list", variant="secondary")
+                gr.Markdown("## Optional — Add your creative direction")
+                creative_prompt = gr.Textbox(
+                    label="What creative ideas should the AI add?",
+                    placeholder="Example: Make the words LEVEL UP orbit around the speaker's neck, follow their movement, and stay clear of their face.",
+                    lines=4,
+                    max_lines=10,
+                )
+                gr.Markdown("Leave this empty for normal automatic editing. Your instructions are added on top of the automatic edit.")
                 render_button = gr.Button("Start AI editing", variant="primary", size="lg")
                 logs = gr.Textbox(
                     label="Editing progress",
@@ -351,7 +359,7 @@ def build_app() -> gr.Blocks:
         drive_select.click(select_drive_video, inputs=drive_video, outputs=[source, drive_message])
         upload_button.click(upload_video, inputs=upload, outputs=[source, upload_message])
         source_refresh.click(refresh_sources, outputs=[source, status])
-        render_button.click(run_render, inputs=source, outputs=[logs, status, render_preview])
+        render_button.click(run_render, inputs=[source, creative_prompt], outputs=[logs, status, render_preview])
         output_refresh.click(refresh_outputs, outputs=[output_choice, status])
         preview_button.click(load_preview, inputs=output_choice, outputs=output_preview)
         output_choice.change(load_preview, inputs=output_choice, outputs=output_file)
