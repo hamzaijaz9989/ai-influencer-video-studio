@@ -37,7 +37,7 @@ class StyledCaptionTests(unittest.TestCase):
             build_ass(segments, [], path)
             output = path.read_text(encoding="utf-8")
             self.assertIn(r"Literal \\\\N", output)
-            self.assertIn(r"\\{override\\}", output)
+            self.assertIn(r"\{override\}", output)
 
 if __name__ == "__main__":
     unittest.main()
