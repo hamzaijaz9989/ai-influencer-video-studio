@@ -117,3 +117,10 @@ This is the safe foundation for natural-language revisions: a future director ca
 ### Additional media-health diagnostics
 
 Export QC now also measures detected black-frame duration and audio peak level. These are advisory warnings rather than automatic failures: intentional black transitions and quiet passages should not cause a valid edit to be rejected. The measurements and any review warnings are included in the QC report.
+
+
+### Automatic insertion of supplied B-roll clips (development branch)
+
+The Colab runner now creates a `BROLL` folder in the Drive project. Add licensed or otherwise authorized video clips named `shot_0.mp4`, `shot_1.mp4`, etc.; the number corresponds to the AI Director's transcript segment index in `broll_shotlist.json`. When a matching suggestion and asset exist, the renderer inserts that clip full-frame over the corresponding edited-timeline interval while retaining the original narration/audio. Short assets are looped to cover the target interval. Unmatched suggestions remain listed for later sourcing.
+
+This is deterministic filename-to-shot matching, not semantic recognition of clip contents. Check that each supplied clip actually illustrates its assigned suggestion and that you have rights to use it. The studio does not scrape or download stock footage.
