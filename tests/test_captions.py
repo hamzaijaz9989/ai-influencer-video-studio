@@ -26,7 +26,7 @@ class StyledCaptionTests(unittest.TestCase):
             segments = [{"start": 5.0, "end": 6.0, "text": "After the pause"}]
             build_ass(segments, [[1.0, 4.0]], path)
             output = path.read_text(encoding="utf-8")
-            self.assertIn("0:00:01.00,0:00:02.00", output)
+            self.assertIn("0:00:02.00,0:00:03.00", output)
 
 
 if __name__ == "__main__":
