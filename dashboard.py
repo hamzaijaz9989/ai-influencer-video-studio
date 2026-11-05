@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -188,11 +189,16 @@ def main() -> None:
     args = parser.parse_args()
     ensure_dirs()
     app = build_app()
+    username = "hkstudio"
+    password = secrets.token_urlsafe(18)
+    print("Dashboard login username: " + username, flush=True)
+    print("Dashboard login password: " + password, flush=True)
     print("Dashboard starting. Keep this Colab session active while using its link.", flush=True)
     app.queue(max_size=4).launch(
         server_name="0.0.0.0",
         server_port=args.server_port,
         share=args.share,
+        auth=(username, password),
         show_error=True,
     )
 
