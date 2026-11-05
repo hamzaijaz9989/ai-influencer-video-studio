@@ -41,6 +41,17 @@ class UniversalEnhancerTests(unittest.TestCase):
             self.assertTrue(output.is_file())
             self.assertTrue(source.is_file())
             self.assertGreater(output.stat().st_size, 0)
+            probe = subprocess.run([
+                "ffprobe", "-v", "error", "-show_entries",
+                "stream=width,height,avg_frame_rate,codec_type",
+                "-of", "json", str(output)
+            ], check=True, capture_output=True, text=True)
+            import json
+            streams = json.loads(probe.stdout)["streams"]
+            video = next(item for item in streams if item["codec_type"] == "video")
+            self.assertEqual((video["width"], video["height"]), (320, 240))
+            self.assertEqual(video["avg_frame_rate"], "24/1")
+            self.assertTrue(any(item["codec_type"] == "audio" for item in streams))
 
     def test_original_cannot_be_overwritten(self):
         with tempfile.TemporaryDirectory() as temp:
