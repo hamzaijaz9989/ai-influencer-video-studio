@@ -95,3 +95,20 @@ When the AI Director returns validated opening-hook segment indexes, the rendere
 ### Animated captions and B-roll planning
 
 Caption events now use subtle fade-in/fade-out animation while retaining white text and Director-selected yellow keyword emphasis. The Director's B-roll suggestions are exported as `broll_shotlist.json` with source and edited-timeline timestamps. This is a timecoded production brief only: assets are not automatically fetched or inserted. B-roll must be supplied by the user or sourced from a licensed provider before insertion; the renderer does not fabricate or silently download stock footage.
+
+
+### Safe render revisions (development branch)
+
+The worker accepts an optional JSON revision file through `--revision-file`. It currently supports only three bounded controls: silence detection threshold (-60 to -20 dB), minimum silence duration (1 to 20 seconds), and smart-zoom strength (0 to 0.15). Unknown keys, strings, booleans and out-of-range values are rejected; revision content is never interpreted as code or shell commands. Applied settings are recorded in each job's `quality_report.json`.
+
+Example:
+
+```json
+{
+  "silence_threshold_db": -38,
+  "silence_min_seconds": 6,
+  "smart_zoom_strength": 0.04
+}
+```
+
+This is the safe foundation for natural-language revisions: a future director can translate requests into this allowlisted settings format, but arbitrary natural-language commands are not executed.
