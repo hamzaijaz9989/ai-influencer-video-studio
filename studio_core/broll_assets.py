@@ -50,12 +50,13 @@ def build_broll_filter(
         scaled = f"broll_scaled_{offset}"
         output = f"broll_mix_{offset}"
         filters.append(
-            f"[{input_index}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-            f"crop=1080:1920,setsar=1[{scaled}]"
+            f"[{input_index}:v]setpts=PTS-STARTPTS,fps=30,scale=1080:1920:"
+            f"force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,"
+            f"format=yuv420p[{scaled}]"
         )
         filters.append(
             f"[{current}][{scaled}]overlay=0:0:enable='between(t,{start:.3f},{end:.3f})':"
-            f"eof_action=pass:shortest=0[{output}]"
+            f"eof_action=pass:shortest=0:format=auto[{output}]"
         )
         current = output
     return ";".join(filters), current
