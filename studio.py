@@ -25,6 +25,7 @@ from studio_core.smart_zoom import build_smart_zoom_expression
 from studio_core.broll import build_broll_shotlist
 from studio_core.revisions import load_revisions
 from studio_core.broll_assets import resolve_broll_assets, build_broll_filter
+from studio_core.creative_direction import interpret_creative_direction, build_drawtext_filter
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -166,13 +167,12 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     work_dir = work_root / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
     creative_prompt = str(creative_prompt or "").strip()[:5000]
+    creative_plan = interpret_creative_direction(creative_prompt) if creative_prompt else None
     if creative_prompt:
         (job_dir / "creative_direction.txt").write_text(creative_prompt, encoding="utf-8")
-        (job_dir / "creative_direction_status.json").write_text(json.dumps({
-            "status": "received_not_yet_rendered",
-            "prompt": creative_prompt,
-            "note": "Creative instructions are preserved with this job. Prompt-driven motion effects are not yet composited by this renderer."
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
+        (job_dir / "creative_direction_status.json").write_text(
+            json.dumps(creative_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
     metadata = probe_video(source)
     duration = float(metadata["format"]["duration"])
@@ -260,6 +260,10 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
         f"zoompan=z='{smart_zoom_expression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
         f"subtitles='{ass_path}'"
     )
+    if creative_plan and creative_plan.get("status") == "supported":
+        drawtext_filter = build_drawtext_filter(creative_plan["effect"])
+        if drawtext_filter:
+            base_filter += "," + drawtext_filter
     ffmpeg_args = ["ffmpeg", "-y", "-i", str(joined)]
     for asset in broll_assets:
         ffmpeg_args.extend(["-stream_loop", "-1", "-i", asset["asset_path"]])
@@ -295,6 +299,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
         "styled_caption_cues": styled_caption_count,
         "smart_zoom_expression": smart_zoom_expression,
         "applied_revisions": revisions,
+        "creative_direction": creative_plan,
         "output_bytes": int(qc_probe["format"]["size"]),
         "streams": streams,
         "audio_stream_present": any(s.get("codec_type") == "audio" for s in streams),
