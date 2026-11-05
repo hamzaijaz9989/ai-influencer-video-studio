@@ -17,6 +17,8 @@ from typing import Any
 from studio_core.editorial import build_editorial_review
 from studio_core.job_store import JobStore
 from studio_core.director import create_director_plan
+from studio_core.visual import analyze_video
+from studio_core.qc import run_export_qc
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -173,6 +175,23 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         encoding="utf-8"
     )
 
+    try:
+        visual_analysis = analyze_video(source)
+        crop_center = visual_analysis["preferred_horizontal_center"]
+        visual_analysis["status"] = "complete"
+    except Exception as exc:
+        crop_center = 0.5
+        visual_analysis = {
+            "status": "unavailable",
+            "error": str(exc)[:1000],
+            "preferred_horizontal_center": crop_center,
+            "limitations": ["Center crop used because visual analysis was unavailable."],
+        }
+    (job_dir / "visual_analysis.json").write_text(
+        json.dumps(visual_analysis, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+
     silence_cuts = detect_long_silences(source, duration)
     keep = retained_intervals(duration, silence_cuts)
     caption_count = build_srt(segments, silence_cuts, job_dir / "captions.srt")
@@ -236,9 +255,20 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
             "Review the rendered video before publishing."
         ]
     }
+    qc["visual_analysis_status"] = visual_analysis.get("status")
+    qc["export_qc"] = run_export_qc(final_path, job_dir / "captions.srt")
+    qc["export_qc_passed"] = qc["export_qc"]["status"] == "passed"
+    (job_dir / "qc_report.json").write_text(
+        json.dumps(qc["export_qc"], indent=2), encoding="utf-8"
+    )
     (job_dir / "quality_report.json").write_text(
         json.dumps(qc, indent=2), encoding="utf-8"
     )
+    if not qc["export_qc_passed"]:
+        raise RuntimeError(
+            "Export quality checks failed: "
+            + ", ".join(qc["export_qc"]["failed_checks"])
+        )
     shutil.rmtree(work_dir, ignore_errors=True)
     return final_path
 
