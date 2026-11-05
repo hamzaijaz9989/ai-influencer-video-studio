@@ -14,13 +14,18 @@ class MediaHealthTests(unittest.TestCase):
             stderr=(
                 "[blackdetect] black_duration:2.000\n"
                 "[Parsed_volumedetect] max_volume: -0.2 dB\n"
+                "[freezedetect] freeze_start: 4.000\n"
+                "[freezedetect] freeze_end: 7.000 | freeze_duration: 3.000\n"
             ),
         )
         result = analyze_media_health(Path("sample.mp4"), 10.0)
         self.assertEqual(result["black_frame_seconds"], 2.0)
         self.assertEqual(result["black_frame_ratio"], 0.2)
         self.assertEqual(result["audio_peak_db"], -0.2)
-        self.assertEqual(len(result["warnings"]), 2)
+        self.assertEqual(len(result["warnings"]), 3)
+        self.assertEqual(result["potential_freeze_events"], [
+            {"start_seconds": 4.0, "end_seconds": 7.0}
+        ])
 
     @patch("studio_core.qc.subprocess.run")
     def test_missing_peak_is_not_invented(self, run):
