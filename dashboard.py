@@ -79,31 +79,66 @@ def ensure_dirs() -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
-def available_sources() -> list[str]:
-    ensure_dirs()
-    files = sorted(
-        (p for p in INPUT.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if SEED.is_file():
-        files.insert(0, SEED)
-    return list(dict.fromkeys(str(p) for p in files))
+def _is_video_file(path: Path) -> bool:
+    try:
+        return path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+    except OSError:
+        return False
 
 
 def available_drive_videos() -> list[str]:
-    """List video files already present in the mounted HK_Video_Studio Drive folder."""
+    """List actual video files in the configured mounted Drive project folder."""
     ensure_dirs()
     excluded = {OUTPUT.resolve(), BROLL.resolve()}
-    files = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
-            continue
-        resolved = path.resolve()
-        if any(parent == resolved or parent in resolved.parents for parent in excluded):
-            continue
-        files.append(path)
-    return sorted((str(p) for p in files), key=lambda value: Path(value).stat().st_mtime, reverse=True)
+    files: list[Path] = []
+    # Include the known source explicitly; recursive Drive scans can occasionally
+    # fail on transient/permission errors in unrelated folders.
+    if _is_video_file(SEED):
+        files.append(SEED)
+    try:
+        for path in ROOT.rglob("*"):
+            try:
+                if not _is_video_file(path):
+                    continue
+                resolved = path.resolve()
+                if any(parent == resolved or parent in resolved.parents for parent in excluded):
+                    continue
+                files.append(path)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    unique = {str(path.resolve()) for path in files if _is_video_file(path)}
+    return sorted(unique, key=lambda value: Path(value).stat().st_mtime, reverse=True)
+
+
+def available_sources() -> list[str]:
+    """List only real video files from INPUT and the mounted Drive project folder."""
+    ensure_dirs()
+    files: list[str] = []
+    try:
+        files.extend(
+            str(p.resolve()) for p in INPUT.iterdir()
+            if _is_video_file(p)
+        )
+    except OSError:
+        pass
+    files.extend(available_drive_videos())
+    return sorted(set(files), key=lambda value: Path(value).stat().st_mtime, reverse=True)
+
+
+def drive_diagnostics(count: int | None = None) -> str:
+    mounted = Path("/content/drive/MyDrive")
+    root_exists = ROOT.is_dir()
+    seed_exists = _is_video_file(SEED)
+    details = [
+        f"Drive mounted: **{'Yes' if mounted.is_dir() else 'No'}**",
+        f"Project folder: `{ROOT}` — **{'found' if root_exists else 'not found'}**",
+        f"Known source Vid1.MP4: **{'found' if seed_exists else 'not found'}**",
+    ]
+    if count is not None:
+        details.append(f"Video files found: **{count}**")
+    return "  ·  ".join(details)
 
 
 def select_drive_video(selected: str | None) -> tuple[gr.Dropdown, str]:
@@ -121,10 +156,12 @@ def select_drive_video(selected: str | None) -> tuple[gr.Dropdown, str]:
 
 def refresh_drive_videos() -> tuple[gr.Dropdown, str]:
     videos = available_drive_videos()
-    return gr.update(choices=videos, value=videos[0] if videos else None), (
-        f"Found **{len(videos)}** video(s) in MyDrive/HK_Video_Studio."
-        if videos else "No videos found in MyDrive/HK_Video_Studio."
-    )
+    message = drive_diagnostics(len(videos))
+    if videos:
+        message += "\\n\\nSelect a file and tap **Use selected Drive video**. No device upload is needed."
+    else:
+        message += "\\n\\nNo video files were detected. Confirm Drive is mounted and the video is inside the configured project folder."
+    return gr.update(choices=videos, value=videos[0] if videos else None), message
 
 
 def output_videos() -> list[str]:
@@ -246,7 +283,7 @@ def build_app() -> gr.Blocks:
                 drive_video = gr.Dropdown(label="Google Drive videos (HK_Video_Studio)", choices=available_drive_videos(), interactive=True)
                 drive_refresh = gr.Button("Refresh Google Drive list", variant="secondary")
                 drive_select = gr.Button("Use selected Drive video", variant="primary")
-                drive_message = gr.Markdown("Select a video from your mounted Google Drive folder. This does not upload it again.")
+                drive_message = gr.Markdown(drive_diagnostics(len(available_drive_videos())) + "\\n\\nSelect a file and tap **Use selected Drive video**. This does not upload it again.")
                 gr.Markdown("### Or upload a new video from your device")
                 upload = gr.File(label="Choose video from this device", file_types=["video"], type="filepath")
                 gr.HTML("""
