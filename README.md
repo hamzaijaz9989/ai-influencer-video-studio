@@ -1,5 +1,12 @@
 # HK AI Video Studio
 
+## Browser dashboard (development)
+
+The development branch includes a Gradio browser dashboard. Open `colab_runner.ipynb` in Google Colab and choose **Runtime → Run all**. After Drive is mounted and dependencies are installed, the notebook prints a temporary dashboard URL. Open that URL in Chrome on Android or desktop. Keep the Colab runtime active; the share URL is temporary and stops working when the session disconnects.
+
+The dashboard supports adding a video to `INPUT`, selecting a source (including the existing root-level `Vid1.MP4`), starting a render, viewing processing logs, and previewing/downloading completed exports. Rendered files and reports remain in Google Drive under `OUTPUT`. This is a session-hosted interface, not a permanent always-on deployment. Do not share the temporary dashboard URL publicly; anyone with the link may be able to access the interface while it is active.
+
+
 A reusable, Drive-folder-based video processing worker for HK_blogspot. The repository is the source of truth for the editing engine; Google Drive holds source videos and rendered outputs.
 
 ## Current workflow
