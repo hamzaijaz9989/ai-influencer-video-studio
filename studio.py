@@ -14,6 +14,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from studio_core.editorial import build_editorial_review
+from studio_core.job_store import JobStore
+
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
 
@@ -159,6 +162,10 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         "\n".join(f'[{s["start"]:.2f}-{s["end"]:.2f}] {s["text"]}' for s in segments),
         encoding="utf-8"
     )
+    (job_dir / "editorial_review.json").write_text(
+        json.dumps(build_editorial_review(segments, language), indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
 
     silence_cuts = detect_long_silences(source, duration)
     keep = retained_intervals(duration, silence_cuts)
@@ -237,6 +244,9 @@ def main() -> None:
     parser.add_argument("--work", type=Path, default=Path("/content/hk_video_work"))
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--seed-file", type=Path, help="Process one existing video outside INPUT, then continue watching INPUT.")
+    parser.add_argument("--state-file", type=Path, help="Persistent job state JSON; defaults to OUTPUT/.job_state.json.")
+    parser.add_argument("--retry-failed", action="store_true", help="Retry jobs previously marked failed.")
     args = parser.parse_args()
     args.input.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -248,32 +258,44 @@ def main() -> None:
     except Exception:
         use_gpu = False
 
-    processed: set[str] = set()
-    print(f"Watching {args.input} | GPU available: {use_gpu}", flush=True)
+    state_file = args.state_file or (args.output / ".job_state.json")
+    store = JobStore(state_file)
+    seed_pending = args.seed_file is not None
+    print(f"Watching {args.input} | GPU available: {use_gpu} | State: {state_file}", flush=True)
     while True:
         candidates = sorted(
             [p for p in args.input.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS],
             key=lambda p: p.stat().st_mtime
         )
+        if seed_pending and args.seed_file and args.seed_file.exists():
+            candidates.insert(0, args.seed_file)
+            seed_pending = False
+        seen_this_pass: set[str] = set()
         for source in candidates:
-            key = str(source.resolve())
-            if key in processed:
+            if not source.exists() or source.suffix.lower() not in VIDEO_EXTENSIONS:
                 continue
-            # Wait until upload size is stable before opening the file.
+            key = JobStore.key(source)
+            if key in seen_this_pass:
+                continue
+            seen_this_pass.add(key)
+            status = store.status(key)
+            if status == "completed" or (status == "failed" and not args.retry_failed):
+                continue
             size1 = source.stat().st_size
             time.sleep(3)
             if not source.exists() or source.stat().st_size != size1:
                 continue
             print(f"\nNew video detected: {source.name}", flush=True)
+            store.set(key, "processing", source=str(source.resolve()), size_bytes=size1)
             try:
                 result = render_job(source, args.output, args.work, use_gpu)
+                store.set(key, "completed", source=str(source.resolve()), output=str(result))
                 print(f"Completed: {result}", flush=True)
-                processed.add(key)
             except Exception as exc:
                 error_path = args.output / f"{source.stem}_FAILED_{datetime.now():%Y%m%d_%H%M%S}.txt"
                 error_path.write_text(str(exc), encoding="utf-8")
+                store.set(key, "failed", source=str(source.resolve()), error=str(exc), log=str(error_path))
                 print(f"FAILED: {source.name}: {exc}", flush=True)
-                processed.add(key)
         if not args.watch:
             break
         time.sleep(max(5, args.poll_seconds))
