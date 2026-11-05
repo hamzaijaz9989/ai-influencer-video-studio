@@ -91,6 +91,42 @@ def available_sources() -> list[str]:
     return list(dict.fromkeys(str(p) for p in files))
 
 
+def available_drive_videos() -> list[str]:
+    """List video files already present in the mounted HK_Video_Studio Drive folder."""
+    ensure_dirs()
+    excluded = {OUTPUT.resolve(), BROLL.resolve()}
+    files = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        resolved = path.resolve()
+        if any(parent == resolved or parent in resolved.parents for parent in excluded):
+            continue
+        files.append(path)
+    return sorted((str(p) for p in files), key=lambda value: Path(value).stat().st_mtime, reverse=True)
+
+
+def select_drive_video(selected: str | None) -> tuple[gr.Dropdown, str]:
+    if not selected:
+        return gr.update(choices=available_sources()), "Choose a video from your Google Drive folder."
+    path = Path(selected).resolve()
+    root = ROOT.resolve()
+    if root not in path.parents or not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
+        return gr.update(choices=available_sources()), "That Drive file is unavailable. Refresh the Drive list."
+    choices = available_sources()
+    if str(path) not in choices:
+        choices.insert(0, str(path))
+    return gr.update(choices=choices, value=str(path)), f"Selected **{path.name}** directly from Google Drive. No re-upload needed."
+
+
+def refresh_drive_videos() -> tuple[gr.Dropdown, str]:
+    videos = available_drive_videos()
+    return gr.update(choices=videos, value=videos[0] if videos else None), (
+        f"Found **{len(videos)}** video(s) in MyDrive/HK_Video_Studio."
+        if videos else "No videos found in MyDrive/HK_Video_Studio."
+    )
+
+
 def output_videos() -> list[str]:
     ensure_dirs()
     return sorted(
@@ -206,8 +242,13 @@ def build_app() -> gr.Blocks:
             status = gr.Markdown(dashboard_status())
         with gr.Tabs():
             with gr.Tab("Projects"):
-                gr.Markdown("### Add a source video")
-                upload = gr.File(label="Choose video from your device", file_types=["video"], type="filepath")
+                gr.Markdown("### Choose a video already in Google Drive")
+                drive_video = gr.Dropdown(label="Google Drive videos (HK_Video_Studio)", choices=available_drive_videos(), interactive=True)
+                drive_refresh = gr.Button("Refresh Google Drive list", variant="secondary")
+                drive_select = gr.Button("Use selected Drive video", variant="primary")
+                drive_message = gr.Markdown("Select a video from your mounted Google Drive folder. This does not upload it again.")
+                gr.Markdown("### Or upload a new video from your device")
+                upload = gr.File(label="Choose video from this device", file_types=["video"], type="filepath")
                 gr.HTML("""
                 <div id="hk-upload-progress" style="display:none;padding:14px;border:1px solid var(--border-color-primary);border-radius:12px;margin:8px 0;">
                   <div id="hk-upload-label" style="font-weight:600;margin-bottom:8px;">Waiting for upload…</div>
@@ -233,6 +274,8 @@ def build_app() -> gr.Blocks:
                 output_preview = gr.Video(label="Final review video")
                 output_file = gr.File(label="Download selected MP4")
                 qc_note = gr.Markdown("Always watch the full export and inspect its QC report before publishing.")
+        drive_refresh.click(refresh_drive_videos, outputs=[drive_video, drive_message])
+        drive_select.click(select_drive_video, inputs=drive_video, outputs=[source, drive_message])
         upload_button.click(upload_video, inputs=upload, outputs=[source, upload_message])
         refresh_button.click(refresh_sources, outputs=[source, status])
         render_button.click(run_render, inputs=source, outputs=[logs, status, render_preview])
