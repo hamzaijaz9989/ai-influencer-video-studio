@@ -219,7 +219,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     srt_path = str(job_dir / "captions.srt").replace("\\", "/").replace(":", "\\:")
     video_filter = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1,"
+        f"crop=1080:1920:x='max(0,min(iw-ow,iw*{crop_center:.4f}-ow/2))':y=0,setsar=1,"
         f"subtitles='{srt_path}':force_style='FontName=DejaVu Sans,"
         "FontSize=17,Bold=1,PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,BorderStyle=1,Outline=3,"
