@@ -1,5 +1,12 @@
 # HK AI Video Studio
 
+## Browser dashboard (development)
+
+The development branch includes a Gradio browser dashboard. Open `colab_runner.ipynb` in Google Colab and choose **Runtime → Run all**. After Drive is mounted and dependencies are installed, the notebook prints a temporary dashboard URL. Open that URL in Chrome on Android or desktop. Keep the Colab runtime active; the share URL is temporary and stops working when the session disconnects.
+
+The dashboard supports adding a video to `INPUT`, selecting a source (including the existing root-level `Vid1.MP4`), starting a render, viewing processing logs, and previewing/downloading completed exports. Rendered files and reports remain in Google Drive under `OUTPUT`. This is a session-hosted interface, not a permanent always-on deployment. Do not share the temporary dashboard URL publicly; anyone with the link may be able to access the interface while it is active.
+
+
 A reusable, Drive-folder-based video processing worker for HK_blogspot. The repository is the source of truth for the editing engine; Google Drive holds source videos and rendered outputs.
 
 ## Current workflow
@@ -22,7 +29,7 @@ The notebook is a one-time session launcher, not a per-video editing checklist. 
 - This worker uses local FFmpeg and Whisper transcription; it does not require a paid API.
 - Large 4K videos can take significant time and temporary disk space.
 - The current baseline automatically transcribes, detects long silence, creates captions, renders vertical 9:16 output and checks the export.
-- Semantic best-take selection, face/gesture-aware reframing, AI-generated graphics and automatic B-roll sourcing are planned stages, not claims of the current baseline. The worker must not silently delete repeated dialogue just because transcript strings look similar.
+- The development branch includes transcript-only retake review signals, sampled frontal-face reframing, Director-triggered smart zoom, animated captions, and insertion of user-supplied B-roll. Gesture-aware editing, AI-generated graphics, automatic stock sourcing and fully autonomous semantic editing are not implemented.
 
 ## Folder layout
 
@@ -50,3 +57,100 @@ python studio.py --input ./INPUT --output ./OUTPUT --watch
 ```
 
 The local watcher processes videos placed in the input directory. In Colab, Drive is mounted automatically by the notebook.
+
+
+## AI Director foundation (in progress)
+
+The current development branch adds two foundations for the next editing stages:
+
+- **Persistent job tracking:** completed inputs are remembered in `OUTPUT/.job_state.json`, so restarting Colab does not automatically render the same unchanged source again. Failed jobs are recorded and can be retried with `--retry-failed`.
+- **Editorial review suggestions:** `editorial_review.json` flags potentially repeated transcript lines for review. Similarity is not treated as proof of a bad take, so no speech is automatically removed by this detector.
+- **Existing source support:** the Colab launcher passes the existing `HK_Video_Studio/Vid1.MP4` as a one-time seed input before continuing to watch `INPUT`.
+
+These changes are an engineering foundation, not a claim that semantic editing, gesture understanding, or automatic B-roll is complete. GitHub Actions runs Python compile and unit checks on pushes and pull requests.
+
+
+### AI Director (first implementation)
+
+Each processed video now receives a `director_plan.json` alongside the transcript and quality report. When a Colab secret named `GEMINI_API_KEY` is available, the optional Gemini director reviews transcript context and proposes:
+- a possible opening hook;
+- topic sections;
+- likely retakes and preferred takes for review;
+- candidate removals requiring approval;
+- B-roll ideas and caption emphasis.
+
+The plan is index-validated before it is saved. No dialogue is automatically deleted. If the API key is missing, the provider is unavailable, or the response cannot be validated, the worker writes a conservative local fallback plan instead. Set `GEMINI_MODEL` to select a model available to your API key; the default is `gemini-2.0-flash`.
+
+
+## Visual analysis and export QC (development branch)
+
+The development branch samples frames with OpenCV to estimate frontal-face positions, exposure and candidate scene changes. It writes `visual_analysis.json`, including per-sample face-center estimates. When horizontal cropping is needed, the renderer interpolates smoothed face-center positions over the edited timeline and compensates for removed silence, rather than relying only on one static center. This is approximate sampled-frame tracking, not gesture, gaze, identity or emotion recognition; it may miss profiles, occlusion or rapid movement. Native 9:16 source footage naturally needs little or no horizontal reframing.
+
+After rendering, deterministic checks validate the output video stream, audio stream, expected 1080x1920 resolution, positive duration, non-empty file, full FFmpeg decode integrity and SRT cue structure/timing. Final audio is loudness-normalized to a consistent target. Results are written to `qc_report.json`; a failed export check marks the job as failed rather than silently accepting a broken output. These checks do not replace a human visual/audio review.
+
+
+### Styled captions and stricter checks
+
+The renderer now burns an ASS caption track into the final MP4. Captions use bold white text with a dark outline; keywords explicitly selected by the AI Director are highlighted in yellow. The SRT sidecar remains available for review and is independently checked for malformed, overlapping, empty or missing cues. The export is marked failed if the video stream, audio stream, expected portrait resolution, duration, file size or caption track fails validation.
+
+
+### Director-triggered smart punch-ins (development branch)
+
+When the AI Director returns validated opening-hook segment indexes, the renderer now applies a subtle 6% punch-in over those moments. The zoom ramps in and out smoothly, and its timing is remapped after long-silence removal. If the Director is unavailable or does not identify a hook, the expression stays at native 1x scale. Invalid indexes are ignored; the zoom strength is bounded. This is a restrained emphasis effect, not gesture-aware camera direction, and it does not add B-roll or graphics.
+
+
+### Animated captions and B-roll planning
+
+Caption events now use subtle fade-in/fade-out animation while retaining white text and Director-selected yellow keyword emphasis. The Director's B-roll suggestions are exported as `broll_shotlist.json` with source and edited-timeline timestamps. This is a timecoded production brief only: assets are not automatically fetched or inserted. B-roll must be supplied by the user or sourced from a licensed provider before insertion; the renderer does not fabricate or silently download stock footage.
+
+
+### Safe render revisions (development branch)
+
+The worker accepts an optional JSON revision file through `--revision-file`. It currently supports only three bounded controls: silence detection threshold (-60 to -20 dB), minimum silence duration (1 to 20 seconds), and smart-zoom strength (0 to 0.15). Unknown keys, strings, booleans and out-of-range values are rejected; revision content is never interpreted as code or shell commands. Applied settings are recorded in each job's `quality_report.json`.
+
+Example:
+
+```json
+{
+  "silence_threshold_db": -38,
+  "silence_min_seconds": 6,
+  "smart_zoom_strength": 0.04
+}
+```
+
+This is the safe foundation for natural-language revisions: a future director can translate requests into this allowlisted settings format, but arbitrary natural-language commands are not executed.
+
+
+### Additional media-health diagnostics
+
+Export QC now also measures detected black-frame duration and audio peak level. These are advisory warnings rather than automatic failures: intentional black transitions and quiet passages should not cause a valid edit to be rejected. The measurements and any review warnings are included in the QC report.
+
+
+### Automatic insertion of supplied B-roll clips (development branch)
+
+The Colab runner now creates a `BROLL` folder in the Drive project. Add licensed or otherwise authorized video clips named `shot_0.mp4`, `shot_1.mp4`, etc.; the number corresponds to the AI Director's transcript segment index in `broll_shotlist.json`. When a matching suggestion and asset exist, the renderer inserts that clip full-frame over the corresponding edited-timeline interval while retaining the original narration/audio. Short assets are looped to cover the target interval. Unmatched suggestions remain listed for later sourcing.
+
+This is deterministic filename-to-shot matching, not semantic recognition of clip contents. Check that each supplied clip actually illustrates its assigned suggestion and that you have rights to use it. The studio does not scrape or download stock footage.
+
+
+### Transcript-only retake comparison (development branch)
+
+Repeated-line candidates now include per-take word count, duration, estimated words per minute, sentence-ending punctuation, possible false-start markers and a heuristic transcript-completeness score. A take is only prioritized for review when its score leads by a clear margin. These signals cannot judge vocal delivery, facial expression, factual correctness or whether a repeated line is intentional. They never trigger automatic dialogue deletion.
+
+
+### Render pipeline integration coverage
+
+The automated test suite now includes a synthetic-media integration test that exercises the complete `render_job` path using a synthetic 4K portrait HEVC source: source probing, mocked transcription and visual analysis, silence timeline handling, caption generation, FFmpeg render, export QC and report generation. A separate FFmpeg integration test checks that retained source intervals are encoded to their requested duration. These synthetic tests improve regression coverage but do not replace rendering and reviewing the original 4K creator footage.
+
+
+## Local self-improvement engine
+
+The development branch now maintains `OUTPUT/.learning_profile.json` across editing sessions. It incrementally collects:
+- Broad style vocabulary from creative prompts (not the full prompt text).
+- Aggregate source-video signals such as sampled exposure and face-tracking success.
+- Export QC outcomes and recurring advisory warnings.
+- Explicit user feedback from the Review & Export tab (better / about right / worse).
+
+The next render uses this history together with the current video's analysis to make bounded visual-intensity adjustments. For example, unreliable face tracking reduces automatic punch-in strength; repeated preference for subtle/smooth edits nudges it down. User-provided silence settings are preserved and are never changed by learning. Dialogue is never deleted by the learning engine.
+
+This is local preference and settings adaptation—not automatic model-weight training, self-modifying code, or a guarantee that every future edit is better. The profile stores aggregate signals and style terms, not source video or transcripts. The user can inspect or delete `OUTPUT/.learning_profile.json` to reset learned preferences. Automated tests cover persistence, feedback, safe bounds and adaptive decisions.

@@ -14,6 +14,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from studio_core.editorial import build_editorial_review
+from studio_core.job_store import JobStore
+from studio_core.director import create_director_plan
+from studio_core.visual import analyze_video
+from studio_core.qc import run_export_qc
+from studio_core.captions import build_ass
+from studio_core.reframe import build_face_center_expression
+from studio_core.smart_zoom import build_smart_zoom_expression
+from studio_core.broll import build_broll_shotlist
+from studio_core.revisions import load_revisions
+from studio_core.broll_assets import resolve_broll_assets, build_broll_filter
+from studio_core.creative_direction import interpret_creative_direction, build_drawtext_filter, apply_neck_orbit
+from studio_core.self_improvement import load_profile, recommend_revisions, record_render
+
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
 
@@ -133,13 +147,37 @@ def build_srt(segments: list[dict[str, Any]], cuts: list[list[float]], destinati
     return len(rows)
 
 
-def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) -> Path:
+def build_segment_encode_command(source: Path, destination: Path, start: float, end: float) -> list[str]:
+    """Build an accurately bounded FFmpeg encode for one retained source interval."""
+    if start < 0 or end <= start:
+        raise ValueError("segment end must be greater than a non-negative start")
+    return [
+        "ffmpeg", "-y", "-ss", f"{start:.3f}", "-i", str(source),
+        "-t", f"{end - start:.3f}", "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "20", "-c:a", "aac", "-b:a", "160k",
+        "-avoid_negative_ts", "make_zero", str(destination),
+    ]
+
+
+def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None, creative_prompt: str = "") -> Path:
+    revisions = revisions or load_revisions(None)
     require_tools()
-    job_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    job_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     job_dir = output_root / f"{source.stem}_{job_id}"
     job_dir.mkdir(parents=True, exist_ok=False)
     work_dir = work_root / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
+    creative_prompt = str(creative_prompt or "").strip()[:5000]
+    creative_plan = interpret_creative_direction(creative_prompt) if creative_prompt else None
+    if creative_prompt:
+        (job_dir / "creative_direction.txt").write_text(creative_prompt, encoding="utf-8")
+        (job_dir / "creative_direction_status.json").write_text(
+            json.dumps(creative_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(
+            f"Creative direction: {creative_plan.get('status')} — {creative_plan.get('note', '')}",
+            flush=True,
+        )
 
     metadata = probe_video(source)
     duration = float(metadata["format"]["duration"])
@@ -159,20 +197,56 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         "\n".join(f'[{s["start"]:.2f}-{s["end"]:.2f}] {s["text"]}' for s in segments),
         encoding="utf-8"
     )
+    (job_dir / "editorial_review.json").write_text(
+        json.dumps(build_editorial_review(segments, language), indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    director_plan = create_director_plan(segments, language)
+    (job_dir / "director_plan.json").write_text(
+        json.dumps(director_plan, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
 
-    silence_cuts = detect_long_silences(source, duration)
+    try:
+        visual_analysis = analyze_video(source)
+        crop_center = visual_analysis["preferred_horizontal_center"]
+        visual_analysis["status"] = "complete"
+    except Exception as exc:
+        crop_center = 0.5
+        visual_analysis = {
+            "status": "unavailable",
+            "error": str(exc)[:1000],
+            "preferred_horizontal_center": crop_center,
+            "limitations": ["Center crop used because visual analysis was unavailable."],
+        }
+    (job_dir / "visual_analysis.json").write_text(
+        json.dumps(visual_analysis, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+
+    silence_cuts = detect_long_silences(
+        source, duration,
+        threshold_db=int(revisions["silence_threshold_db"]),
+        min_seconds=int(revisions["silence_min_seconds"]),
+    )
+    broll_shotlist = build_broll_shotlist(segments, director_plan, silence_cuts)
+    broll_assets = resolve_broll_assets(broll_shotlist, broll_dir)
+    (job_dir / "broll_shotlist.json").write_text(
+        json.dumps({"shots": broll_shotlist, "matched_assets": broll_assets}, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    crop_center_expression = build_face_center_expression(visual_analysis, silence_cuts, crop_center)
+    smart_zoom_expression = build_smart_zoom_expression(
+        segments, director_plan, silence_cuts,
+        strength=float(revisions["smart_zoom_strength"]),
+    )
     keep = retained_intervals(duration, silence_cuts)
     caption_count = build_srt(segments, silence_cuts, job_dir / "captions.srt")
+    styled_caption_count = build_ass(segments, silence_cuts, job_dir / "captions.ass", director_plan)
 
     parts = []
     for index, (start, end) in enumerate(keep):
         part = work_dir / f"part_{index:03}.mp4"
-        command([
-            "ffmpeg", "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
-            "-i", str(source), "-c:v", "libx264", "-preset", "veryfast",
-            "-crf", "20", "-c:a", "aac", "-b:a", "160k",
-            "-avoid_negative_ts", "make_zero", str(part)
-        ])
+        command(build_segment_encode_command(source, part, start, end))
         parts.append(part)
 
     concat_file = work_dir / "concat.txt"
@@ -184,21 +258,45 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
              str(concat_file), "-c", "copy", str(joined)])
 
     final_path = job_dir / "FINAL_REVIEW.mp4"
-    srt_path = str(job_dir / "captions.srt").replace("\\", "/").replace(":", "\\:")
-    video_filter = (
+    ass_path = str(job_dir / "captions.ass").replace("\\", "/").replace(":", "\\:")
+    base_filter = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1,"
-        f"subtitles='{srt_path}':force_style='FontName=DejaVu Sans,"
-        "FontSize=17,Bold=1,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,BorderStyle=1,Outline=3,"
-        "Shadow=1,Alignment=2,MarginV=115,WrapStyle=2'"
+        f"crop=1080:1920:x='max(0,min(iw-ow,iw*({crop_center_expression})-ow/2))':y=0,setsar=1,"
+        f"zoompan=z='{smart_zoom_expression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
+        f"subtitles='{ass_path}'"
     )
-    command([
-        "ffmpeg", "-y", "-i", str(joined), "-vf", video_filter,
+    if creative_plan and creative_plan.get("status") == "supported":
+        drawtext_filter = build_drawtext_filter(creative_plan["effect"])
+        if drawtext_filter:
+            base_filter += "," + drawtext_filter
+    ffmpeg_args = ["ffmpeg", "-y", "-i", str(joined)]
+    for asset in broll_assets:
+        ffmpeg_args.extend(["-stream_loop", "-1", "-i", asset["asset_path"]])
+    graph, final_label = build_broll_filter("base", broll_assets, 1)
+    graph = f"[0:v]{base_filter}[base]" + (f";{graph}" if graph else "")
+    if graph and broll_assets:
+        graph += f";[{final_label}]null[outv]"
+        ffmpeg_args.extend(["-filter_complex", graph, "-map", "[outv]"])
+    else:
+        ffmpeg_args.extend(["-vf", base_filter, "-map", "0:v:0"])
+    ffmpeg_args.extend([
+        "-map", "0:a:0?", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart", str(final_path)
     ])
+    command(ffmpeg_args)
+    if creative_plan and creative_plan.get("status") == "supported_2d_approximation":
+        try:
+            apply_neck_orbit(str(final_path), creative_plan["effect"])
+            creative_plan["render_status"] = "rendered_2d_face_follow"
+            creative_plan["render_note"] = "2D face-following orbit composited; no 3D perspective or depth-aware occlusion."
+        except Exception as exc:
+            creative_plan["render_status"] = "tracking_failed_original_kept"
+            creative_plan["render_note"] = str(exc)[:1000]
+        (job_dir / "creative_direction_status.json").write_text(
+            json.dumps(creative_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
     qc_probe = json.loads(command([
         "ffprobe", "-v", "error", "-show_entries",
@@ -214,6 +312,10 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         "removed_silence_intervals": silence_cuts,
         "transcript_segments": len(segments),
         "caption_cues": caption_count,
+        "styled_caption_cues": styled_caption_count,
+        "smart_zoom_expression": smart_zoom_expression,
+        "applied_revisions": revisions,
+        "creative_direction": creative_plan,
         "output_bytes": int(qc_probe["format"]["size"]),
         "streams": streams,
         "audio_stream_present": any(s.get("codec_type") == "audio" for s in streams),
@@ -223,9 +325,20 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
             "Review the rendered video before publishing."
         ]
     }
+    qc["visual_analysis_status"] = visual_analysis.get("status")
+    qc["export_qc"] = run_export_qc(final_path, job_dir / "captions.srt")
+    qc["export_qc_passed"] = qc["export_qc"]["status"] == "passed"
+    (job_dir / "qc_report.json").write_text(
+        json.dumps(qc["export_qc"], indent=2), encoding="utf-8"
+    )
     (job_dir / "quality_report.json").write_text(
         json.dumps(qc, indent=2), encoding="utf-8"
     )
+    if not qc["export_qc_passed"]:
+        raise RuntimeError(
+            "Export quality checks failed: "
+            + ", ".join(qc["export_qc"]["failed_checks"])
+        )
     shutil.rmtree(work_dir, ignore_errors=True)
     return final_path
 
@@ -237,6 +350,12 @@ def main() -> None:
     parser.add_argument("--work", type=Path, default=Path("/content/hk_video_work"))
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--seed-file", type=Path, help="Process one existing video outside INPUT, then continue watching INPUT.")
+    parser.add_argument("--state-file", type=Path, help="Persistent job state JSON; defaults to OUTPUT/.job_state.json.")
+    parser.add_argument("--retry-failed", action="store_true", help="Retry jobs previously marked failed.")
+    parser.add_argument("--revision-file", type=Path, help="Optional JSON file with safe render adjustments.")
+    parser.add_argument("--broll-dir", type=Path, help="Directory containing licensed/user-supplied shot_N video assets.")
+    parser.add_argument("--creative-prompt-file", type=Path, help="Optional text file containing user creative direction for this render.")
     args = parser.parse_args()
     args.input.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -248,32 +367,47 @@ def main() -> None:
     except Exception:
         use_gpu = False
 
-    processed: set[str] = set()
-    print(f"Watching {args.input} | GPU available: {use_gpu}", flush=True)
+    revisions = load_revisions(args.revision_file)
+    creative_prompt = args.creative_prompt_file.read_text(encoding="utf-8") if args.creative_prompt_file and args.creative_prompt_file.exists() else ""
+    print(f"Render revisions: {json.dumps(revisions, sort_keys=True)}", flush=True)
+    state_file = args.state_file or (args.output / ".job_state.json")
+    store = JobStore(state_file)
+    seed_pending = args.seed_file is not None
+    print(f"Watching {args.input} | GPU available: {use_gpu} | State: {state_file}", flush=True)
     while True:
         candidates = sorted(
             [p for p in args.input.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS],
             key=lambda p: p.stat().st_mtime
         )
+        if seed_pending and args.seed_file and args.seed_file.exists():
+            candidates.insert(0, args.seed_file)
+            seed_pending = False
+        seen_this_pass: set[str] = set()
         for source in candidates:
-            key = str(source.resolve())
-            if key in processed:
+            if not source.exists() or source.suffix.lower() not in VIDEO_EXTENSIONS:
                 continue
-            # Wait until upload size is stable before opening the file.
+            key = JobStore.key(source)
+            if key in seen_this_pass:
+                continue
+            seen_this_pass.add(key)
+            status = store.status(key)
+            if status == "completed" or (status == "failed" and not args.retry_failed):
+                continue
             size1 = source.stat().st_size
             time.sleep(3)
             if not source.exists() or source.stat().st_size != size1:
                 continue
             print(f"\nNew video detected: {source.name}", flush=True)
+            store.set(key, "processing", source=str(source.resolve()), size_bytes=size1)
             try:
-                result = render_job(source, args.output, args.work, use_gpu)
+                result = render_job(source, args.output, args.work, use_gpu, revisions, args.broll_dir, creative_prompt)
+                store.set(key, "completed", source=str(source.resolve()), output=str(result))
                 print(f"Completed: {result}", flush=True)
-                processed.add(key)
             except Exception as exc:
                 error_path = args.output / f"{source.stem}_FAILED_{datetime.now():%Y%m%d_%H%M%S}.txt"
                 error_path.write_text(str(exc), encoding="utf-8")
+                store.set(key, "failed", source=str(source.resolve()), error=str(exc), log=str(error_path))
                 print(f"FAILED: {source.name}: {exc}", flush=True)
-                processed.add(key)
         if not args.watch:
             break
         time.sleep(max(5, args.poll_seconds))
