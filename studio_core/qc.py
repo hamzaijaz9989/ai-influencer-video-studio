@@ -41,6 +41,8 @@ def validate_srt(path: Path) -> dict[str, Any]:
         if not any(line.strip() for line in lines[2:]):
             errors.append(f"Cue {number}: empty caption")
         cue_count += 1
+    if cue_count == 0:
+        errors.append("No caption cues found")
     return {"cue_count": cue_count, "valid": not errors, "errors": errors}
 
 
