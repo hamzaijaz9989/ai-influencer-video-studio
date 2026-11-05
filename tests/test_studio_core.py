@@ -24,7 +24,7 @@ class EditorialTests(unittest.TestCase):
             {"start": 4, "end": 7, "text": "This is the complete explanation"},
         ]
         found = review_repeated_lines(rows)
-        self.assertEqual(found[0]["review_first_segment_index"], 0)
+        self.assertIsNone(found[0]["review_first_segment_index"])
         self.assertIn("cannot assess vocal delivery", __import__(
             "studio_core.editorial", fromlist=["build_editorial_review"]
         ).build_editorial_review(rows)["policy"])
