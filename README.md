@@ -129,3 +129,8 @@ This is deterministic filename-to-shot matching, not semantic recognition of cli
 ### Transcript-only retake comparison (development branch)
 
 Repeated-line candidates now include per-take word count, duration, estimated words per minute, sentence-ending punctuation, possible false-start markers and a heuristic transcript-completeness score. A take is only prioritized for review when its score leads by a clear margin. These signals cannot judge vocal delivery, facial expression, factual correctness or whether a repeated line is intentional. They never trigger automatic dialogue deletion.
+
+
+### Render pipeline integration coverage
+
+The automated test suite now includes a synthetic-media integration test that exercises the complete `render_job` path: source probing, mocked transcription and visual analysis, silence timeline handling, caption generation, FFmpeg render, export QC and report generation. A separate FFmpeg integration test checks that retained source intervals are encoded to their requested duration. These synthetic tests improve regression coverage but do not replace rendering and reviewing the original 4K creator footage.
