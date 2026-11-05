@@ -24,6 +24,7 @@ from studio_core.reframe import build_face_center_expression
 from studio_core.smart_zoom import build_smart_zoom_expression
 from studio_core.broll import build_broll_shotlist
 from studio_core.revisions import load_revisions
+from studio_core.broll_assets import resolve_broll_assets, build_broll_filter
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -144,7 +145,7 @@ def build_srt(segments: list[dict[str, Any]], cuts: list[list[float]], destinati
     return len(rows)
 
 
-def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None) -> Path:
+def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None) -> Path:
     revisions = revisions or load_revisions(None)
     require_tools()
     job_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -204,8 +205,9 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
         min_seconds=int(revisions["silence_min_seconds"]),
     )
     broll_shotlist = build_broll_shotlist(segments, director_plan, silence_cuts)
+    broll_assets = resolve_broll_assets(broll_shotlist, broll_dir)
     (job_dir / "broll_shotlist.json").write_text(
-        json.dumps(broll_shotlist, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps({"shots": broll_shotlist, "matched_assets": broll_assets}, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     crop_center_expression = build_face_center_expression(visual_analysis, silence_cuts, crop_center)
     smart_zoom_expression = build_smart_zoom_expression(
@@ -237,19 +239,29 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
 
     final_path = job_dir / "FINAL_REVIEW.mp4"
     ass_path = str(job_dir / "captions.ass").replace("\\", "/").replace(":", "\\:")
-    video_filter = (
+    base_filter = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
         f"crop=1080:1920:x='max(0,min(iw-ow,iw*({crop_center_expression})-ow/2))':y=0,setsar=1,"
         f"zoompan=z='{smart_zoom_expression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
         f"subtitles='{ass_path}'"
     )
-    command([
-        "ffmpeg", "-y", "-i", str(joined), "-vf", video_filter,
-        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+    ffmpeg_args = ["ffmpeg", "-y", "-i", str(joined)]
+    for asset in broll_assets:
+        ffmpeg_args.extend(["-i", asset["asset_path"]])
+    graph, final_label = build_broll_filter("base", broll_assets, 1)
+    graph = f"[0:v]{base_filter}[base]" + (f";{graph}" if graph else "")
+    if graph and broll_assets:
+        graph += f";[{final_label}]null[outv]"
+        ffmpeg_args.extend(["-filter_complex", graph, "-map", "[outv]"])
+    else:
+        ffmpeg_args.extend(["-vf", base_filter, "-map", "0:v:0"])
+    ffmpeg_args.extend([
+        "-map", "0:a:0?", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart", str(final_path)
     ])
+    command(ffmpeg_args)
 
     qc_probe = json.loads(command([
         "ffprobe", "-v", "error", "-show_entries",
@@ -306,6 +318,7 @@ def main() -> None:
     parser.add_argument("--state-file", type=Path, help="Persistent job state JSON; defaults to OUTPUT/.job_state.json.")
     parser.add_argument("--retry-failed", action="store_true", help="Retry jobs previously marked failed.")
     parser.add_argument("--revision-file", type=Path, help="Optional JSON file with safe render adjustments.")
+    parser.add_argument("--broll-dir", type=Path, help="Directory containing licensed/user-supplied shot_N video assets.")
     args = parser.parse_args()
     args.input.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -349,7 +362,7 @@ def main() -> None:
             print(f"\nNew video detected: {source.name}", flush=True)
             store.set(key, "processing", source=str(source.resolve()), size_bytes=size1)
             try:
-                result = render_job(source, args.output, args.work, use_gpu, revisions)
+                result = render_job(source, args.output, args.work, use_gpu, revisions, args.broll_dir)
                 store.set(key, "completed", source=str(source.resolve()), output=str(result))
                 print(f"Completed: {result}", flush=True)
             except Exception as exc:
