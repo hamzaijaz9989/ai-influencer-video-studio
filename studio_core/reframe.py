@@ -39,7 +39,8 @@ def build_face_center_expression(
     smoothed = []
     for index, (timestamp, _) in enumerate(points):
         window = [value for _, value in points[max(0, index - 1):index + 2]]
-        smoothed.append((timestamp, float(median(window))))
+        smoothed_value = float(median(window)) if len(window) == 3 else points[index][1]
+        smoothed.append((timestamp, smoothed_value)))
     if len(smoothed) == 1:
         return f"{smoothed[0][1]:.5f}"
     expression = f"{smoothed[-1][1]:.5f}"
