@@ -226,6 +226,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     )
     command([
         "ffmpeg", "-y", "-i", str(joined), "-vf", video_filter,
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart", str(final_path)
