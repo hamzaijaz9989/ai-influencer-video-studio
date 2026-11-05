@@ -112,3 +112,8 @@ Example:
 ```
 
 This is the safe foundation for natural-language revisions: a future director can translate requests into this allowlisted settings format, but arbitrary natural-language commands are not executed.
+
+
+### Additional media-health diagnostics
+
+Export QC now also measures detected black-frame duration and audio peak level. These are advisory warnings rather than automatic failures: intentional black transitions and quiet passages should not cause a valid edit to be rejected. The measurements and any review warnings are included in the QC report.
