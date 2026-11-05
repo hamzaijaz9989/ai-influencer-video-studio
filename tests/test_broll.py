@@ -28,6 +28,16 @@ class BrollShotlistTests(unittest.TestCase):
         ]}
         self.assertEqual(build_broll_shotlist(segments, plan, [[2.0, 5.0]]), [])
 
+    def test_skips_suggestion_spanning_removed_silence(self):
+        segments = [{"start": 1.0, "end": 9.0}]
+        plan = {"broll_suggestions": [{"segment_index": 0, "visual_idea": "A visual"}]}
+        self.assertEqual(build_broll_shotlist(segments, plan, [[4.0, 6.0]]), [])
+
+    def test_ignores_malformed_suggestion_rows(self):
+        segments = [{"start": 1.0, "end": 2.0}]
+        self.assertEqual(build_broll_shotlist(segments, {"broll_suggestions": [None]}, []), [])
+        self.assertEqual(build_broll_shotlist(segments, {"broll_suggestions": "bad"}, []), [])
+
 
 if __name__ == "__main__":
     unittest.main()
