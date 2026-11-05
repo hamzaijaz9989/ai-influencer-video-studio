@@ -56,5 +56,26 @@ class SegmentCommandTests(unittest.TestCase):
             build_segment_encode_command(Path("source.mp4"), Path("part.mp4"), 5.0, 5.0)
 
 
+
+    def test_recovers_from_corrupt_state_without_overwriting_backup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "state.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            store = JobStore(path)
+            self.assertIsNone(store.status("missing"))
+            backup = path.with_suffix(".json.corrupt")
+            self.assertTrue(backup.is_file())
+            self.assertEqual(backup.read_text(encoding="utf-8"), "{not valid json")
+            store.set("new-key", "completed")
+            self.assertEqual(JobStore(path).status("new-key"), "completed")
+
+    def test_recovers_from_unsupported_state_schema(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "state.json"
+            path.write_text(json.dumps({"version": 999, "jobs": {}}), encoding="utf-8")
+            store = JobStore(path)
+            self.assertIsNone(store.status("missing"))
+            self.assertTrue(path.with_suffix(".json.corrupt").is_file())
+
 if __name__ == "__main__":
     unittest.main()
