@@ -75,7 +75,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 styled.append(escaped)
         text = "".join(styled).replace("\n", "\\N")
         rows.append(
-            f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{text}"
+            f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{{\\fad(100,120)}}{text}"
         )
     destination.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
     return len(rows)
