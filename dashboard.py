@@ -220,11 +220,19 @@ def refresh_sources() -> tuple[gr.Dropdown, str]:
 def run_render(selected: str) -> Iterator[tuple[str, str, str]]:
     ensure_dirs()
     if not selected:
-        yield "Select a source video first.", dashboard_status(), ""
+        yield "Select a video file from the Drive list or project source list first.", dashboard_status(), ""
         return
-    source = Path(selected)
-    if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
-        yield "The selected source is no longer available. Refresh the list.", dashboard_status(), ""
+    source = Path(selected).expanduser()
+    try:
+        source = source.resolve(strict=True)
+    except (OSError, RuntimeError):
+        yield f"Selected path does not exist: {selected}. Refresh the Drive list and choose a video file.", dashboard_status(), ""
+        return
+    if not source.is_file():
+        yield f"The selected path is a folder, not a video file: {source}. Choose an MP4/MOV video from the list.", dashboard_status(), ""
+        return
+    if source.suffix.lower() not in VIDEO_EXTENSIONS:
+        yield f"Unsupported source type: {source.suffix or '(no extension)'}. Choose an MP4/MOV video.", dashboard_status(), ""
         return
     command = [
         sys.executable, "studio.py",
@@ -298,7 +306,13 @@ def build_app() -> gr.Blocks:
                 upload_button = gr.Button("Add to project", variant="secondary")
                 upload_message = gr.Markdown()
                 gr.Markdown("### Select a project video")
-                source = gr.Dropdown(label="Source video", choices=available_sources(), interactive=True)
+                initial_sources = available_sources()
+                source = gr.Dropdown(
+                    label="Source video",
+                    choices=initial_sources,
+                    value=initial_sources[0] if initial_sources else None,
+                    interactive=True,
+                )
                 refresh_button = gr.Button("Refresh source list")
                 render_button = gr.Button("Run AI edit", variant="primary")
                 logs = gr.Textbox(label="Processing log", lines=12, max_lines=24, interactive=False)
