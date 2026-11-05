@@ -22,6 +22,57 @@ WORK = Path("/content/hk_video_work")
 SEED = ROOT / "Vid1.MP4"
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
+UPLOAD_PROGRESS_JS = r"""
+() => {
+  if (window.__hkUploadProgressInstalled) return;
+  window.__hkUploadProgressInstalled = true;
+  const fmt = (n) => n >= 1024 ** 3 ? (n / 1024 ** 3).toFixed(2) + " GB" : (n / 1024 ** 2).toFixed(1) + " MB";
+  const update = (state, loaded, total, started) => {
+    const panel = document.getElementById("hk-upload-progress");
+    if (!panel) return;
+    panel.style.display = "block";
+    const label = panel.querySelector("#hk-upload-label");
+    const detail = panel.querySelector("#hk-upload-detail");
+    const bar = panel.querySelector("#hk-upload-bar");
+    const pct = total > 0 ? Math.min(100, loaded / total * 100) : 0;
+    bar.style.width = pct.toFixed(1) + "%";
+    label.textContent = state === "done" ? "Transfer complete — now click Add to project" :
+      state === "error" ? "Upload failed — check your connection and try again" :
+      "Uploading video… " + pct.toFixed(1) + "%";
+    if (state === "done") detail.textContent = fmt(total) + " transferred. The file is ready to add to the project.";
+    else if (state === "error") detail.textContent = fmt(loaded) + " transferred before the connection failed.";
+    else {
+      const seconds = Math.max(1, (Date.now() - started) / 1000);
+      const speed = loaded / seconds;
+      const remaining = speed > 0 && total > loaded ? Math.ceil((total - loaded) / speed) : 0;
+      detail.textContent = fmt(loaded) + " of " + fmt(total) + " · " +
+        fmt(speed) + "/s · " + (remaining ? "about " + Math.floor(remaining / 60) + "m " + (remaining % 60) + "s remaining" : "calculating time");
+    }
+  };
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this.__hkUploadRequest = typeof url === "string" && url.includes("/upload");
+    return originalOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function(body) {
+    if (this.__hkUploadRequest && body instanceof FormData && this.upload) {
+      const started = Date.now();
+      this.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) update("uploading", event.loaded, event.total, started);
+      });
+      this.addEventListener("load", () => {
+        if (this.status >= 200 && this.status < 300) update("done", 1, 1, started);
+        else update("error", 0, 1, started);
+      });
+      this.addEventListener("error", () => update("error", 0, 1, started));
+      this.addEventListener("abort", () => update("error", 0, 1, started));
+    }
+    return originalSend.apply(this, arguments);
+  };
+}
+"""
+
 
 def ensure_dirs() -> None:
     for path in (INPUT, OUTPUT, BROLL, WORK):
@@ -149,7 +200,7 @@ def build_app() -> gr.Blocks:
     #hero h1 {margin-bottom: 4px;}
     .muted {opacity: .72;}
     """
-    with gr.Blocks(title="HK AI Video Studio", theme=gr.themes.Soft(), css=css) as app:
+    with gr.Blocks(title="HK AI Video Studio", theme=gr.themes.Soft(), css=css, js=UPLOAD_PROGRESS_JS) as app:
         with gr.Column(elem_id="hero"):
             gr.Markdown("# HK AI Video Studio\nYour AI-assisted editing workspace. Upload, process, review and export creator videos.")
             status = gr.Markdown(dashboard_status())
@@ -157,6 +208,15 @@ def build_app() -> gr.Blocks:
             with gr.Tab("Projects"):
                 gr.Markdown("### Add a source video")
                 upload = gr.File(label="Choose video from your device", file_types=["video"], type="filepath")
+                gr.HTML("""
+                <div id="hk-upload-progress" style="display:none;padding:14px;border:1px solid var(--border-color-primary);border-radius:12px;margin:8px 0;">
+                  <div id="hk-upload-label" style="font-weight:600;margin-bottom:8px;">Waiting for upload…</div>
+                  <div style="height:12px;background:var(--background-fill-secondary);border-radius:99px;overflow:hidden;">
+                    <div id="hk-upload-bar" style="height:100%;width:0%;background:var(--button-primary-background-fill);transition:width .15s;"></div>
+                  </div>
+                  <div id="hk-upload-detail" style="font-size:13px;opacity:.8;margin-top:8px;">Transferred size, speed and estimated time will appear here.</div>
+                </div>
+                """)
                 upload_button = gr.Button("Add to project", variant="secondary")
                 upload_message = gr.Markdown()
                 gr.Markdown("### Select a project video")
