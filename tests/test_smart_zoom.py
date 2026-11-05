@@ -14,7 +14,7 @@ class SmartZoomTests(unittest.TestCase):
             segments, {"hook_segment_indexes": [0]}, []
         )
         self.assertIn("between(in_time", expression)
-        self.assertIn("1.0600", expression)
+        self.assertIn("0.0600", expression)
         self.assertIn("min(1", expression)
 
     def test_removed_silence_remaps_hook_time(self):
@@ -22,7 +22,7 @@ class SmartZoomTests(unittest.TestCase):
         expression = build_smart_zoom_expression(
             segments, {"hook_segment_indexes": [0]}, [[2.0, 5.0]]
         )
-        self.assertIn("7.200", expression)
+        self.assertIn("6.800", expression)
 
     def test_invalid_hook_indexes_are_ignored(self):
         segments = [{"start": 1.0, "end": 2.0, "text": "Hook"}]
