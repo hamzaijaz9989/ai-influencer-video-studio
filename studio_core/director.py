@@ -6,6 +6,7 @@ Without an API key, a deterministic fallback still creates a useful editorial br
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import urllib.error
@@ -64,12 +65,27 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _validate_plan(plan: dict[str, Any], count: int) -> dict[str, Any]:
+    if not isinstance(plan, dict):
+        raise ValueError("Director plan must be a JSON object")
+
+    def rows(value: Any) -> list:
+        return value if isinstance(value, list) else []
+
+    def confidence(value: Any) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(1.0, number)) if math.isfinite(number) else 0.0
+
     def valid_index(value: Any) -> bool:
         return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < count
 
-    hooks = [i for i in plan.get("hook_segment_indexes", []) if valid_index(i)]
+    hooks = [i for i in rows(plan.get("hook_segment_indexes", [])) if valid_index(i)]
     sections = []
-    for section in plan.get("sections", []):
+    for section in rows(plan.get("sections", [])):
+        if not isinstance(section, dict):
+            continue
         start, end = section.get("start_segment"), section.get("end_segment")
         if valid_index(start) and valid_index(end) and start <= end:
             sections.append({
@@ -77,29 +93,35 @@ def _validate_plan(plan: dict[str, Any], count: int) -> dict[str, Any]:
                 "start_segment": start, "end_segment": end,
             })
     takes = []
-    for decision in plan.get("take_decisions", []):
-        indexes = [i for i in decision.get("segment_indexes", []) if valid_index(i)]
+    for decision in rows(plan.get("take_decisions", [])):
+        if not isinstance(decision, dict):
+            continue
+        indexes = [i for i in rows(decision.get("segment_indexes", [])) if valid_index(i)]
         preferred = decision.get("preferred_segment_index")
         if indexes:
             takes.append({
                 "segment_indexes": indexes,
                 "preferred_segment_index": preferred if preferred in indexes else None,
                 "action": "prefer_one_for_review" if decision.get("action") == "prefer_one_for_review" else "keep_all",
-                "confidence": max(0.0, min(1.0, float(decision.get("confidence", 0)))),
+                "confidence": confidence(decision.get("confidence", 0)),
                 "reason": str(decision.get("reason", ""))[:500],
             })
     cuts = []
-    for suggestion in plan.get("cut_suggestions", []):
-        indexes = [i for i in suggestion.get("segment_indexes", []) if valid_index(i)]
+    for suggestion in rows(plan.get("cut_suggestions", [])):
+        if not isinstance(suggestion, dict):
+            continue
+        indexes = [i for i in rows(suggestion.get("segment_indexes", [])) if valid_index(i)]
         if indexes:
             cuts.append({
                 "segment_indexes": indexes, "action": "review_removal",
-                "confidence": max(0.0, min(1.0, float(suggestion.get("confidence", 0)))),
+                "confidence": confidence(suggestion.get("confidence", 0)),
                 "reason": str(suggestion.get("reason", ""))[:500],
                 "approval_required": True,
             })
     broll = []
-    for item in plan.get("broll_suggestions", []):
+    for item in rows(plan.get("broll_suggestions", [])):
+        if not isinstance(item, dict):
+            continue
         index = item.get("segment_index")
         if valid_index(index):
             broll.append({
@@ -108,7 +130,9 @@ def _validate_plan(plan: dict[str, Any], count: int) -> dict[str, Any]:
                 "reason": str(item.get("reason", ""))[:400],
             })
     emphasis = []
-    for item in plan.get("caption_emphasis", []):
+    for item in rows(plan.get("caption_emphasis", [])):
+        if not isinstance(item, dict):
+            continue
         index = item.get("segment_index")
         words = item.get("words", [])
         if valid_index(index) and isinstance(words, list):
