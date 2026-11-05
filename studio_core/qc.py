@@ -55,8 +55,8 @@ def analyze_media_health(video: Path, duration: float) -> dict[str, Any]:
         "-af", "volumedetect", "-f", "null", "-"
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     log = result.stderr
-    freeze_starts = [float(x) for x in re.findall(r"freeze_start:\\s*([0-9.]+)", log)]
-    freeze_ends = [float(x) for x in re.findall(r"freeze_end:\\s*([0-9.]+)", log)]
+    freeze_starts = [float(x) for x in re.findall(r"freeze_start:\s*([0-9.]+)", log)]
+    freeze_ends = [float(x) for x in re.findall(r"freeze_end:\s*([0-9.]+)", log)]
     black_durations = [float(x) for x in re.findall(r"black_duration:([0-9.]+)", log)]
     peak_match = re.search(r"max_volume:\s*(-?(?:[0-9]+(?:\.[0-9]+)?|inf))\s*dB", log)
     peak_db = None
