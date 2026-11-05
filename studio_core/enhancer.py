@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -59,17 +60,21 @@ def enhance_video(source: Path, destination: Path, strength: str = "balanced",
         raise ValueError("Unsupported video container.")
     metadata = probe_media(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temp = destination.with_name(destination.stem + ".enhancing" + destination.suffix)
+    if destination.suffix.lower() != ".mp4":
+        raise ValueError("Choose an .mp4 output path for the enhanced export.")
+    temp = destination.with_name(destination.stem + f".enhancing-{uuid.uuid4().hex[:8]}.mp4")
     try:
         args = ["ffmpeg", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a?"]
         args += ["-vf", build_enhancement_filter(strength, denoise),
-                 "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
                  "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
                  "-map_metadata", "0", "-movflags", "+faststart", str(temp)]
         _run(args)
         result = probe_media(temp)
         if result["video"].get("width") != metadata["video"].get("width") or result["video"].get("height") != metadata["video"].get("height"):
             raise RuntimeError("Enhancement unexpectedly changed the source resolution.")
+        if result["video"].get("avg_frame_rate") != metadata["video"].get("avg_frame_rate"):
+            raise RuntimeError("Enhancement unexpectedly changed the source frame rate.")
         if metadata["has_audio"] and not result["has_audio"]:
             raise RuntimeError("Enhancement export lost the source audio.")
         temp.replace(destination)
