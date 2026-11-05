@@ -287,36 +287,57 @@ def build_app() -> gr.Blocks:
             status = gr.Markdown(dashboard_status())
         with gr.Tabs():
             with gr.Tab("Projects"):
-                gr.Markdown("### Choose a video already in Google Drive")
-                drive_video = gr.Dropdown(label="Google Drive videos (HK_Video_Studio)", choices=available_drive_videos(), interactive=True)
-                drive_refresh = gr.Button("Refresh Google Drive list", variant="secondary")
-                drive_select = gr.Button("Use selected Drive video", variant="primary")
-                drive_message = gr.Markdown(drive_diagnostics(len(available_drive_videos())) + "\\n\\nSelect a file and tap **Use selected Drive video**. This does not upload it again.")
-                gr.Markdown("### Or upload a new video from your device")
-                upload = gr.File(label="Choose video from this device", file_types=["video"], type="filepath")
-                gr.HTML("""
-                <div id="hk-upload-progress" style="display:none;padding:14px;border:1px solid var(--border-color-primary);border-radius:12px;margin:8px 0;">
-                  <div id="hk-upload-label" style="font-weight:600;margin-bottom:8px;">Waiting for upload…</div>
-                  <div style="height:12px;background:var(--background-fill-secondary);border-radius:99px;overflow:hidden;">
-                    <div id="hk-upload-bar" style="height:100%;width:0%;background:var(--button-primary-background-fill);transition:width .15s;"></div>
-                  </div>
-                  <div id="hk-upload-detail" style="font-size:13px;opacity:.8;margin-top:8px;">Transferred size, speed and estimated time will appear here.</div>
-                </div>
-                """)
-                upload_button = gr.Button("Add to project", variant="secondary")
-                upload_message = gr.Markdown()
-                gr.Markdown("### Select a project video")
+                gr.Markdown("## Step 1 — Choose your video")
+                gr.Markdown(
+                    "Your video must already be inside **Google Drive → MyDrive → HK_Video_Studio**. "
+                    "Choose it below. You do **not** need to upload it again."
+                )
+                drive_videos = available_drive_videos()
+                drive_video = gr.Dropdown(
+                    label="Your Google Drive videos",
+                    choices=drive_videos,
+                    value=drive_videos[0] if drive_videos else None,
+                    interactive=True,
+                )
+                with gr.Row():
+                    drive_refresh = gr.Button("Refresh video list", variant="secondary")
+                    drive_select = gr.Button("Use this video", variant="primary")
+                drive_message = gr.Markdown(
+                    drive_diagnostics(len(drive_videos))
+                    + "\\n\\nChoose a video above, then tap **Use this video**."
+                )
+
+                gr.Markdown("## Step 2 — Check your selected video")
                 initial_sources = available_sources()
                 source = gr.Dropdown(
-                    label="Source video",
+                    label="Video ready to edit",
                     choices=initial_sources,
                     value=initial_sources[0] if initial_sources else None,
                     interactive=True,
                 )
-                refresh_button = gr.Button("Refresh source list")
-                render_button = gr.Button("Run AI edit", variant="primary")
-                logs = gr.Textbox(label="Processing log", lines=12, max_lines=24, interactive=False)
-                render_preview = gr.Video(label="Latest rendered preview")
+                render_button = gr.Button("Start AI editing", variant="primary", size="lg")
+                logs = gr.Textbox(
+                    label="Editing progress",
+                    lines=8,
+                    max_lines=18,
+                    interactive=False,
+                    placeholder="Progress messages will appear here after you start editing.",
+                )
+                render_preview = gr.Video(label="Your edited video")
+
+                with gr.Accordion("Need to upload a video from your phone instead?", open=False):
+                    gr.Markdown(
+                        "Only use this if the video is **not already in Google Drive**. "
+                        "Large videos may take a long time to upload."
+                    )
+                    upload = gr.File(
+                        label="Choose a video from this phone",
+                        file_types=["video"],
+                        type="filepath",
+                    )
+                    upload_button = gr.Button("Add phone video to project", variant="secondary")
+                    upload_message = gr.Markdown()
+
             with gr.Tab("Review & export"):
                 gr.Markdown("### Rendered videos\nChoose an export to preview it. Quality reports and transcripts are saved in the same output folder in Google Drive.")
                 output_choice = gr.Dropdown(label="Completed exports", choices=output_videos())
