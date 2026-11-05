@@ -290,6 +290,27 @@ def enhance_selected_video(selected: str, strength: str, denoise: bool) -> tuple
         return f"Enhancement failed: {exc}", ""
 
 
+def save_edit_feedback(selected: str, rating: str, note: str = "") -> str:
+    """Persist simple human feedback for the next editing session."""
+    if not selected:
+        return "Choose a completed export before submitting feedback."
+    path = Path(selected).expanduser().resolve()
+    try:
+        path.relative_to(OUTPUT.resolve())
+    except ValueError:
+        return "Feedback can only be attached to an export inside this project's OUTPUT folder."
+    if not path.is_file() or path.name != "FINAL_REVIEW.mp4":
+        return "Select a valid completed review export."
+    from studio_core.self_improvement import record_feedback, profile_summary
+    profile = record_feedback(OUTPUT / ".learning_profile.json", rating, note)
+    feedback_path = path.parent / "user_feedback.json"
+    feedback_path.write_text(json.dumps({
+        "rating": rating,
+        "note": note[:500],
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+    return "Feedback saved. " + profile_summary(profile)
+
+
 def refresh_outputs() -> tuple[gr.Dropdown, str]:
     videos = output_videos()
     return gr.update(choices=videos, value=videos[0] if videos else None), dashboard_status()
@@ -400,6 +421,21 @@ def build_app() -> gr.Blocks:
                 output_preview = gr.Video(label="Final review video")
                 output_file = gr.File(label="Download selected MP4")
                 qc_note = gr.Markdown("Always watch the full export and inspect its QC report before publishing.")
+                gr.Markdown("### Help the editor improve")
+                feedback_rating = gr.Radio(
+                    choices=[("Better — I like this edit", "better"), ("About right", "same"), ("Worse — needs improvement", "worse")],
+                    value="same",
+                    label="How did this edit turn out?",
+                )
+                feedback_note = gr.Textbox(
+                    label="Optional feedback",
+                    placeholder="Example: less zoom, cleaner captions, keep more pauses, warmer color.",
+                    lines=2,
+                    max_lines=4,
+                )
+                feedback_button = gr.Button("Save feedback for future edits", variant="primary")
+                feedback_status = gr.Markdown()
+
         enhancer_refresh.click(refresh_sources, outputs=[enhancer_source, status])
         enhancer_button.click(enhance_selected_video, inputs=[enhancer_source, enhancer_strength, enhancer_denoise], outputs=[enhancer_status, enhancer_preview])
         drive_refresh.click(refresh_drive_videos, outputs=[drive_video, drive_message])
@@ -410,6 +446,7 @@ def build_app() -> gr.Blocks:
         output_refresh.click(refresh_outputs, outputs=[output_choice, status])
         preview_button.click(load_preview, inputs=output_choice, outputs=output_preview)
         output_choice.change(load_preview, inputs=output_choice, outputs=output_file)
+        feedback_button.click(save_edit_feedback, inputs=[output_choice, feedback_rating, feedback_note], outputs=feedback_status)
     return app
 
 
