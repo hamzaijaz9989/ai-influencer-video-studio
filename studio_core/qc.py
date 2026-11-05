@@ -28,11 +28,16 @@ def validate_srt(path: Path) -> dict[str, Any]:
         if len(lines) < 3 or not lines[0].strip().isdigit():
             errors.append(f"Cue {number}: malformed block")
             continue
+        if int(lines[0].strip()) != number:
+            errors.append(f"Cue {number}: cue number should be {number}")
         match = timestamp.match(lines[1].strip())
         if not match:
             errors.append(f"Cue {number}: invalid timestamp")
             continue
-        start, end = ms(match.groups()[:4]), ms(match.groups()[4:])
+        parts = tuple(map(int, match.groups()))
+        if any(parts[index] > 59 for index in (1, 2, 5, 6)):
+            errors.append(f"Cue {number}: minutes and seconds must be between 00 and 59")
+        start, end = ms(parts[:4]), ms(parts[4:])
         if end <= start:
             errors.append(f"Cue {number}: end must be after start")
         if start < previous_end:
