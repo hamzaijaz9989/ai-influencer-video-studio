@@ -53,7 +53,7 @@ def enhance_video(source: Path, destination: Path, strength: str = "balanced",
     """Enhance any FFmpeg-readable video while preserving its frame size and frame rate."""
     source = Path(source).expanduser().resolve(strict=True)
     destination = Path(destination).expanduser()
-    if source == destination.resolve() if destination.exists() else source == destination:
+    if source == destination.resolve():
         raise ValueError("Enhancement output must be a new file; the original is never overwritten.")
     if source.suffix.lower() not in {".mp4", ".mov", ".mkv", ".m4v", ".avi", ".webm"}:
         raise ValueError("Unsupported video container.")
