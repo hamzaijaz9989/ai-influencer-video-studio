@@ -16,6 +16,7 @@ from typing import Any
 
 from studio_core.editorial import build_editorial_review
 from studio_core.job_store import JobStore
+from studio_core.director import create_director_plan
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -164,6 +165,11 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     )
     (job_dir / "editorial_review.json").write_text(
         json.dumps(build_editorial_review(segments, language), indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    director_plan = create_director_plan(segments, language)
+    (job_dir / "director_plan.json").write_text(
+        json.dumps(director_plan, indent=2, ensure_ascii=False),
         encoding="utf-8"
     )
 
