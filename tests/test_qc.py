@@ -39,5 +39,29 @@ class CaptionQualityTests(unittest.TestCase):
             self.assertTrue(any("overlaps" in error for error in result["errors"]))
 
 
+
+    def test_rejects_nonsequential_cue_numbers(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "captions.srt"
+            path.write_text(
+                "1\n00:00:00,000 --> 00:00:01,000\nFirst\n\n"
+                "4\n00:00:01,100 --> 00:00:02,000\nSecond\n",
+                encoding="utf-8",
+            )
+            result = validate_srt(path)
+            self.assertFalse(result["valid"])
+            self.assertTrue(any("cue number" in error for error in result["errors"]))
+
+    def test_rejects_invalid_minute_or_second_fields(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "captions.srt"
+            path.write_text(
+                "1\n00:61:00,000 --> 00:61:01,000\nInvalid time\n",
+                encoding="utf-8",
+            )
+            result = validate_srt(path)
+            self.assertFalse(result["valid"])
+            self.assertTrue(any("minutes and seconds" in error for error in result["errors"]))
+
 if __name__ == "__main__":
     unittest.main()
