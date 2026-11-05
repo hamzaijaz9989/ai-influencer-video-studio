@@ -217,7 +217,7 @@ def refresh_sources() -> tuple[gr.Dropdown, str]:
     return gr.update(choices=choices, value=choices[0] if choices else None), dashboard_status()
 
 
-def run_render(selected: str) -> Iterator[tuple[str, str, str]]:
+def run_render(selected: str, creative_prompt: str = "") -> Iterator[tuple[str, str, str]]:
     ensure_dirs()
     if not selected:
         yield "Select a video file from the Drive list or project source list first.", dashboard_status(), ""
@@ -242,6 +242,11 @@ def run_render(selected: str) -> Iterator[tuple[str, str, str]]:
         "--broll-dir", str(BROLL),
         "--seed-file", str(source),
     ]
+    if creative_prompt and creative_prompt.strip():
+        prompt_file = WORK / "creative_direction.txt"
+        prompt_file.parent.mkdir(parents=True, exist_ok=True)
+        prompt_file.write_text(creative_prompt.strip(), encoding="utf-8")
+        command.extend(["--creative-prompt-file", str(prompt_file)])
     yield f"Starting **{source.name}**… This may take a while for 4K footage.", dashboard_status(), ""
     process = subprocess.Popen(
         command,
