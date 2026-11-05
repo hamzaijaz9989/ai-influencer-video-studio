@@ -64,8 +64,8 @@ def build_smart_zoom_expression(
         # Smooth ramp-in and ramp-out avoid a visible snap at the segment edge.
         ramp = min(ramp_seconds, max(0.05, (end - start) / 2))
         progress = (
-            f"max(0\\,min(1\\,(in_time-{start:.3f})/{ramp:.3f}"
-            f"\\,( {end:.3f}-in_time)/{ramp:.3f}))"
+            f"max(0\\,min(1\\,min((in_time-{start:.3f})/{ramp:.3f}"
+            f"\\,({end:.3f}-in_time)/{ramp:.3f})))"
         )
         zoom = f"(1+{strength:.4f}*{progress})"
         expression = (
