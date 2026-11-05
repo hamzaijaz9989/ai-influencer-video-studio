@@ -23,6 +23,7 @@ from studio_core.captions import build_ass
 from studio_core.reframe import build_face_center_expression
 from studio_core.smart_zoom import build_smart_zoom_expression
 from studio_core.broll import build_broll_shotlist
+from studio_core.revisions import load_revisions
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -143,7 +144,8 @@ def build_srt(segments: list[dict[str, Any]], cuts: list[list[float]], destinati
     return len(rows)
 
 
-def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) -> Path:
+def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None) -> Path:
+    revisions = revisions or load_revisions(None)
     require_tools()
     job_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     job_dir = output_root / f"{source.stem}_{job_id}"
@@ -196,13 +198,20 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         encoding="utf-8"
     )
 
-    silence_cuts = detect_long_silences(source, duration)
+    silence_cuts = detect_long_silences(
+        source, duration,
+        threshold_db=int(revisions["silence_threshold_db"]),
+        min_seconds=int(revisions["silence_min_seconds"]),
+    )
     broll_shotlist = build_broll_shotlist(segments, director_plan, silence_cuts)
     (job_dir / "broll_shotlist.json").write_text(
         json.dumps(broll_shotlist, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     crop_center_expression = build_face_center_expression(visual_analysis, silence_cuts, crop_center)
-    smart_zoom_expression = build_smart_zoom_expression(segments, director_plan, silence_cuts)
+    smart_zoom_expression = build_smart_zoom_expression(
+        segments, director_plan, silence_cuts,
+        strength=float(revisions["smart_zoom_strength"]),
+    )
     keep = retained_intervals(duration, silence_cuts)
     caption_count = build_srt(segments, silence_cuts, job_dir / "captions.srt")
     styled_caption_count = build_ass(segments, silence_cuts, job_dir / "captions.ass", director_plan)
@@ -258,6 +267,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
         "caption_cues": caption_count,
         "styled_caption_cues": styled_caption_count,
         "smart_zoom_expression": smart_zoom_expression,
+        "applied_revisions": revisions,
         "output_bytes": int(qc_probe["format"]["size"]),
         "streams": streams,
         "audio_stream_present": any(s.get("codec_type") == "audio" for s in streams),
@@ -295,6 +305,7 @@ def main() -> None:
     parser.add_argument("--seed-file", type=Path, help="Process one existing video outside INPUT, then continue watching INPUT.")
     parser.add_argument("--state-file", type=Path, help="Persistent job state JSON; defaults to OUTPUT/.job_state.json.")
     parser.add_argument("--retry-failed", action="store_true", help="Retry jobs previously marked failed.")
+    parser.add_argument("--revision-file", type=Path, help="Optional JSON file with safe render adjustments.")
     args = parser.parse_args()
     args.input.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -306,6 +317,8 @@ def main() -> None:
     except Exception:
         use_gpu = False
 
+    revisions = load_revisions(args.revision_file)
+    print(f"Render revisions: {json.dumps(revisions, sort_keys=True)}", flush=True)
     state_file = args.state_file or (args.output / ".job_state.json")
     store = JobStore(state_file)
     seed_pending = args.seed_file is not None
@@ -336,7 +349,7 @@ def main() -> None:
             print(f"\nNew video detected: {source.name}", flush=True)
             store.set(key, "processing", source=str(source.resolve()), size_bytes=size1)
             try:
-                result = render_job(source, args.output, args.work, use_gpu)
+                result = render_job(source, args.output, args.work, use_gpu, revisions)
                 store.set(key, "completed", source=str(source.resolve()), output=str(result))
                 print(f"Completed: {result}", flush=True)
             except Exception as exc:
