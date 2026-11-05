@@ -22,6 +22,7 @@ from studio_core.qc import run_export_qc
 from studio_core.captions import build_ass
 from studio_core.reframe import build_face_center_expression
 from studio_core.smart_zoom import build_smart_zoom_expression
+from studio_core.broll import build_broll_shotlist
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -196,6 +197,10 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     )
 
     silence_cuts = detect_long_silences(source, duration)
+    broll_shotlist = build_broll_shotlist(segments, director_plan, silence_cuts)
+    (job_dir / "broll_shotlist.json").write_text(
+        json.dumps(broll_shotlist, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     crop_center_expression = build_face_center_expression(visual_analysis, silence_cuts, crop_center)
     smart_zoom_expression = build_smart_zoom_expression(segments, director_plan, silence_cuts)
     keep = retained_intervals(duration, silence_cuts)
