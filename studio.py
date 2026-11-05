@@ -173,6 +173,10 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
         (job_dir / "creative_direction_status.json").write_text(
             json.dumps(creative_plan, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+        print(
+            f"Creative direction: {creative_plan.get('status')} — {creative_plan.get('note', '')}",
+            flush=True,
+        )
 
     metadata = probe_video(source)
     duration = float(metadata["format"]["duration"])
