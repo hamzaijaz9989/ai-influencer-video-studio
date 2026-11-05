@@ -107,6 +107,6 @@ def analyze_video(path: Path, sample_fps: float = 0.5, max_width: int = 640) -> 
         "limitations": [
             "Frontal-face detection is approximate and can miss profiles, occlusion or poor lighting.",
             "Face detection does not infer gestures, gaze, identity or emotion.",
-            "The suggested crop center is a single-video median, not a shot-by-shot tracker.",
+            "Reframing uses sampled frontal-face centers with interpolation; it is not continuous real-time tracking and can miss fast movement.",
         ],
     }
