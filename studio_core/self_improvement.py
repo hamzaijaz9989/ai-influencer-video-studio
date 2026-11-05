@@ -90,9 +90,9 @@ def record_render(path: Path, prompt: str, visual: dict[str, Any], qc: dict[str,
 
     # Store broad style terms, not raw prompts or personal/video content.
     tokens = re.findall(r"[a-z]{3,20}", (prompt or "").lower())
-    ignored = {"make", "with", "that", "this", "from", "your", "video", "text", "around", "into", "keep", "please"}
+    style_terms = {"warm", "cool", "cinematic", "subtle", "bold", "minimal", "clean", "smooth", "dynamic", "slow", "fast", "zoom", "closeup", "close", "wide", "orbit", "glow", "fade", "animated", "captions", "caption", "lighting", "color", "contrast", "sharp", "soft", "stabilized", "stabilization", "vertical", "horizontal", "tracking", "depth", "3d", "text"}
     preferences = profile.setdefault("prompt_preferences", {})
-    for token in set(tokens) - ignored:
+    for token in set(tokens) & style_terms:
         preferences[token] = min(100, int(preferences.get(token, 0)) + 1)
 
     patterns = profile.setdefault("video_patterns", {})
