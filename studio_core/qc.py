@@ -46,6 +46,38 @@ def validate_srt(path: Path) -> dict[str, Any]:
     return {"cue_count": cue_count, "valid": not errors, "errors": errors}
 
 
+
+def analyze_media_health(video: Path, duration: float) -> dict[str, Any]:
+    """Collect advisory black-frame and audio-peak diagnostics without false-failing edits."""
+    result = subprocess.run([
+        "ffmpeg", "-hide_banner", "-i", str(video),
+        "-vf", "blackdetect=d=0.5:pix_th=0.10",
+        "-af", "volumedetect", "-f", "null", "-"
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    log = result.stderr
+    black_durations = [float(x) for x in re.findall(r"black_duration:([0-9.]+)", log)]
+    peak_match = re.search(r"max_volume:\s*(-?(?:[0-9]+(?:\.[0-9]+)?|inf))\s*dB", log)
+    peak_db = None
+    if peak_match and peak_match.group(1) != "inf":
+        peak_db = float(peak_match.group(1))
+    black_seconds = round(sum(black_durations), 3)
+    black_ratio = round(black_seconds / duration, 4) if duration > 0 else 0.0
+    warnings = []
+    if black_ratio > 0.08:
+        warnings.append("More than 8% of the export is detected as black; review for accidental blank frames.")
+    if peak_db is not None and peak_db > -0.5:
+        warnings.append("Audio peak is close to digital clipping; listen for distortion.")
+    if result.returncode != 0:
+        warnings.append("Media-health diagnostics could not complete.")
+    return {
+        "black_frame_seconds": black_seconds,
+        "black_frame_ratio": black_ratio,
+        "audio_peak_db": peak_db,
+        "warnings": warnings,
+        "diagnostics_completed": result.returncode == 0,
+    }
+
+
 def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
                   expected_height: int = 1920) -> dict[str, Any]:
     probe = json.loads(_run([
@@ -63,6 +95,7 @@ def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     decode_ok = decode.returncode == 0 and not decode.stderr.strip()
     srt = validate_srt(captions)
+    media_health = analyze_media_health(video, duration)
     checks = {
         "file_exists": video.is_file(),
         "file_nonempty": size > 0,
@@ -81,6 +114,7 @@ def run_export_qc(video: Path, captions: Path, expected_width: int = 1080,
         "size_bytes": size,
         "streams": streams,
         "captions": srt,
+        "media_health": media_health,
         "decode_error": decode.stderr[-2000:] if not decode_ok else "",
         "failed_checks": [key for key, value in checks.items() if not value],
     }
