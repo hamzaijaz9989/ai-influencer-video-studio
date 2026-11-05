@@ -145,6 +145,18 @@ def build_srt(segments: list[dict[str, Any]], cuts: list[list[float]], destinati
     return len(rows)
 
 
+def build_segment_encode_command(source: Path, destination: Path, start: float, end: float) -> list[str]:
+    """Build an accurately bounded FFmpeg encode for one retained source interval."""
+    if start < 0 or end <= start:
+        raise ValueError("segment end must be greater than a non-negative start")
+    return [
+        "ffmpeg", "-y", "-ss", f"{start:.3f}", "-i", str(source),
+        "-t", f"{end - start:.3f}", "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "20", "-c:a", "aac", "-b:a", "160k",
+        "-avoid_negative_ts", "make_zero", str(destination),
+    ]
+
+
 def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None) -> Path:
     revisions = revisions or load_revisions(None)
     require_tools()
@@ -221,13 +233,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     parts = []
     for index, (start, end) in enumerate(keep):
         part = work_dir / f"part_{index:03}.mp4"
-        command([
-            "ffmpeg", "-y", "-ss", f"{start:.3f}",
-            "-i", str(source), "-t", f"{max(0.0, end - start):.3f}",
-            "-c:v", "libx264", "-preset", "veryfast",
-            "-crf", "20", "-c:a", "aac", "-b:a", "160k",
-            "-avoid_negative_ts", "make_zero", str(part)
-        ])
+        command(build_segment_encode_command(source, part, start, end))
         parts.append(part)
 
     concat_file = work_dir / "concat.txt"
