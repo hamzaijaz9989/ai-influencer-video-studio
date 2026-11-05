@@ -18,12 +18,13 @@ class RenderJobIntegrationTests(unittest.TestCase):
             work = root / "WORK"
             subprocess.run([
                 "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
-                "testsrc2=size=360x640:rate=30:duration=5", "-f", "lavfi", "-i",
-                "sine=frequency=440:sample_rate=48000:duration=5",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(source)
+                "testsrc2=size=2160x3840:rate=15:duration=1.6", "-f", "lavfi", "-i",
+                "sine=frequency=440:sample_rate=48000:duration=1.6",
+                "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "pools=1:frame-threads=1",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", str(source)
             ], check=True)
             transcript = ([{
-                "start": 0.25, "end": 4.7,
+                "start": 0.1, "end": 1.4,
                 "text": "This is a complete synthetic test of the video editing pipeline.",
                 "words": []
             }], "en", 0.99)
