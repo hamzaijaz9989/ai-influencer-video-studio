@@ -22,5 +22,26 @@ class DirectorTests(unittest.TestCase):
         self.assertFalse(result["safety"]["automatic_speech_deletion"])
 
 
+    def test_validation_handles_malformed_optional_sections(self):
+        plan = _validate_plan({
+            "hook_segment_indexes": "not-a-list",
+            "sections": [None, {"start_segment": 0, "end_segment": 1}],
+            "take_decisions": [None, {"segment_indexes": [0], "confidence": float("nan")}],
+            "cut_suggestions": [None, {"segment_indexes": [1], "confidence": "not-a-number"}],
+            "broll_suggestions": [None, {"segment_index": 0}],
+            "caption_emphasis": [None, {"segment_index": 0, "words": ["focus"]}],
+        }, 2)
+        self.assertEqual(plan["hook_segment_indexes"], [])
+        self.assertEqual(plan["take_decisions"][0]["confidence"], 0.0)
+        self.assertEqual(plan["cut_suggestions"][0]["confidence"], 0.0)
+        self.assertEqual(len(plan["sections"]), 1)
+        self.assertEqual(len(plan["broll_suggestions"]), 1)
+        self.assertEqual(len(plan["caption_emphasis"]), 1)
+
+    def test_validation_rejects_non_object_plan(self):
+        with self.assertRaises(ValueError):
+            _validate_plan([], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
