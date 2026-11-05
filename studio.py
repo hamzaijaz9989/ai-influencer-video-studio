@@ -20,6 +20,7 @@ from studio_core.director import create_director_plan
 from studio_core.visual import analyze_video
 from studio_core.qc import run_export_qc
 from studio_core.captions import build_ass
+from studio_core.reframe import build_face_center_expression
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -194,6 +195,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     )
 
     silence_cuts = detect_long_silences(source, duration)
+    crop_center_expression = build_face_center_expression(visual_analysis, silence_cuts, crop_center)
     keep = retained_intervals(duration, silence_cuts)
     caption_count = build_srt(segments, silence_cuts, job_dir / "captions.srt")
     styled_caption_count = build_ass(segments, silence_cuts, job_dir / "captions.ass", director_plan)
@@ -221,7 +223,7 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool) 
     ass_path = str(job_dir / "captions.ass").replace("\\", "/").replace(":", "\\:")
     video_filter = (
         "scale=1080:1920:force_original_aspect_ratio=increase,"
-        f"crop=1080:1920:x='max(0,min(iw-ow,iw*{crop_center:.4f}-ow/2))':y=0,setsar=1,"
+        f"crop=1080:1920:x='max(0,min(iw-ow,iw*({crop_center_expression})-ow/2))':y=0,setsar=1,"
         f"subtitles='{ass_path}'"
     )
     command([
