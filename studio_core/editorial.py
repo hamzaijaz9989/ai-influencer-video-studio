@@ -13,11 +13,11 @@ def normalize(text: str) -> str:
 def _take_signals(segment: dict[str, Any]) -> dict[str, Any]:
     """Estimate transcript-only completeness/readability signals, never delivery quality."""
     text = str(segment.get("text", "")).strip()
-    words = re.findall(r"\b[\w’'-]+\\b", text)
+    words = re.findall(r"\b[\w’'-]+\b", text)
     duration = max(0.05, float(segment.get("end", 0)) - float(segment.get("start", 0)))
     wpm = len(words) / duration * 60
     normalized = text.lower()
-    false_start = bool(re.match(r"^(?:uh+|um+|so+|well+|and+|but+|i mean)\\b", normalized))
+    false_start = bool(re.match(r"^(?:uh+|um+|so+|well+|and+|but+|i mean)\b", normalized))
     complete_ending = bool(re.search(r"[.!?…][\"'”’)]*$", text))
     pace_plausible = 70 <= wpm <= 230
     score = min(1.0, len(words) / 12) * 0.35
