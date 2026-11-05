@@ -26,8 +26,6 @@ DEFAULT_PROFILE: dict[str, Any] = {
 
 SAFE_BOUNDS = {
     "smart_zoom_strength": (0.02, 0.09),
-    "silence_threshold_db": (-42, -34),
-    "silence_min_seconds": (5.0, 8.0),
 }
 
 
@@ -72,10 +70,16 @@ def recommend_revisions(base: dict[str, Any], visual: dict[str, Any], profile: d
         zoom *= 1.05
     if dislikes > likes:
         zoom *= 0.85
+    # Learn broad visual style preferences from prior creative prompts.
+    preferences = profile.get("prompt_preferences", {})
+    subtle = int(preferences.get("subtle", 0)) + int(preferences.get("smooth", 0))
+    dynamic = int(preferences.get("dynamic", 0)) + int(preferences.get("bold", 0))
+    if subtle > dynamic:
+        zoom *= 0.95
+    elif dynamic > subtle:
+        zoom *= 1.02
     result["smart_zoom_strength"] = round(max(0.02, min(0.09, zoom)), 3)
-    # Keep silence handling conservative; don't infer speech deletion from video statistics.
-    result["silence_threshold_db"] = max(-42, min(-34, int(result.get("silence_threshold_db", -38))))
-    result["silence_min_seconds"] = max(5.0, min(8.0, float(result.get("silence_min_seconds", 5.0))))
+    # Preserve user-defined silence settings; learning never changes speech cuts.
     return result
 
 
