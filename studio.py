@@ -148,7 +148,7 @@ def build_srt(segments: list[dict[str, Any]], cuts: list[list[float]], destinati
 def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None) -> Path:
     revisions = revisions or load_revisions(None)
     require_tools()
-    job_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    job_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     job_dir = output_root / f"{source.stem}_{job_id}"
     job_dir.mkdir(parents=True, exist_ok=False)
     work_dir = work_root / job_id
@@ -222,8 +222,9 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     for index, (start, end) in enumerate(keep):
         part = work_dir / f"part_{index:03}.mp4"
         command([
-            "ffmpeg", "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
-            "-i", str(source), "-c:v", "libx264", "-preset", "veryfast",
+            "ffmpeg", "-y", "-ss", f"{start:.3f}",
+            "-i", str(source), "-t", f"{max(0.0, end - start):.3f}",
+            "-c:v", "libx264", "-preset", "veryfast",
             "-crf", "20", "-c:a", "aac", "-b:a", "160k",
             "-avoid_negative_ts", "make_zero", str(part)
         ])
