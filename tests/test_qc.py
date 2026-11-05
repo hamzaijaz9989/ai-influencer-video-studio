@@ -18,6 +18,14 @@ class CaptionQualityTests(unittest.TestCase):
             self.assertTrue(result["valid"])
             self.assertEqual(result["cue_count"], 2)
 
+    def test_rejects_empty_caption_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "captions.srt"
+            path.write_text("", encoding="utf-8")
+            result = validate_srt(path)
+            self.assertFalse(result["valid"])
+            self.assertEqual(result["cue_count"], 0)
+
     def test_rejects_overlapping_cues(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "captions.srt"
