@@ -85,3 +85,8 @@ After rendering, deterministic checks validate the output video stream, audio st
 ### Styled captions and stricter checks
 
 The renderer now burns an ASS caption track into the final MP4. Captions use bold white text with a dark outline; keywords explicitly selected by the AI Director are highlighted in yellow. The SRT sidecar remains available for review and is independently checked for malformed, overlapping, empty or missing cues. The export is marked failed if the video stream, audio stream, expected portrait resolution, duration, file size or caption track fails validation.
+
+
+### Director-triggered smart punch-ins (development branch)
+
+When the AI Director returns validated opening-hook segment indexes, the renderer now applies a subtle 6% punch-in over those moments. The zoom ramps in and out smoothly, and its timing is remapped after long-silence removal. If the Director is unavailable or does not identify a hook, the expression stays at native 1x scale. Invalid indexes are ignored; the zoom strength is bounded. This is a restrained emphasis effect, not gesture-aware camera direction, and it does not add B-roll or graphics.
