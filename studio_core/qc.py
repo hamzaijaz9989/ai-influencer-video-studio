@@ -51,10 +51,12 @@ def analyze_media_health(video: Path, duration: float) -> dict[str, Any]:
     """Collect advisory black-frame and audio-peak diagnostics without false-failing edits."""
     result = subprocess.run([
         "ffmpeg", "-hide_banner", "-i", str(video),
-        "-vf", "blackdetect=d=0.5:pix_th=0.10",
+        "-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-50dB:d=2",
         "-af", "volumedetect", "-f", "null", "-"
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     log = result.stderr
+    freeze_starts = [float(x) for x in re.findall(r"freeze_start:\\s*([0-9.]+)", log)]
+    freeze_ends = [float(x) for x in re.findall(r"freeze_end:\\s*([0-9.]+)", log)]
     black_durations = [float(x) for x in re.findall(r"black_duration:([0-9.]+)", log)]
     peak_match = re.search(r"max_volume:\s*(-?(?:[0-9]+(?:\.[0-9]+)?|inf))\s*dB", log)
     peak_db = None
@@ -67,12 +69,19 @@ def analyze_media_health(video: Path, duration: float) -> dict[str, Any]:
         warnings.append("More than 8% of the export is detected as black; review for accidental blank frames.")
     if peak_db is not None and peak_db > -0.5:
         warnings.append("Audio peak is close to digital clipping; listen for distortion.")
+    freeze_events = []
+    for index, start in enumerate(freeze_starts):
+        end = freeze_ends[index] if index < len(freeze_ends) else None
+        freeze_events.append({"start_seconds": round(start, 3), "end_seconds": round(end, 3) if end is not None else None})
+    if freeze_events:
+        warnings.append("Potential frozen video frames detected; review the listed intervals (static shots can be intentional).")
     if result.returncode != 0:
         warnings.append("Media-health diagnostics could not complete.")
     return {
         "black_frame_seconds": black_seconds,
         "black_frame_ratio": black_ratio,
         "audio_peak_db": peak_db,
+        "potential_freeze_events": freeze_events,
         "warnings": warnings,
         "diagnostics_completed": result.returncode == 0,
     }
