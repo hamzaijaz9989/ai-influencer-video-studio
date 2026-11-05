@@ -29,5 +29,15 @@ class StyledCaptionTests(unittest.TestCase):
             self.assertIn("0:00:02.00,0:00:03.00", output)
 
 
+
+    def test_escapes_transcript_override_sequences(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "captions.ass"
+            segments = [{"start": 0.0, "end": 1.0, "text": r"Literal \\N and {override}"}]
+            build_ass(segments, [], path)
+            output = path.read_text(encoding="utf-8")
+            self.assertIn(r"Literal \\\\N", output)
+            self.assertIn(r"\\{override\\}", output)
+
 if __name__ == "__main__":
     unittest.main()
