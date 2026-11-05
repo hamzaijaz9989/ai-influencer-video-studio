@@ -80,3 +80,8 @@ The plan is index-validated before it is saved. No dialogue is automatically del
 The development branch samples frames with OpenCV to estimate frontal-face positions, exposure and candidate scene changes. It writes `visual_analysis.json`. Where a horizontal crop is required, the median detected face center is used as a conservative static framing anchor; vertical 9:16 source footage naturally needs little or no horizontal reframing. This is not gesture, gaze, identity or emotion recognition, and it is not a shot-by-shot face tracker.
 
 After rendering, deterministic checks validate the output video stream, audio stream, expected 1080x1920 resolution, positive duration, non-empty file and SRT cue structure/timing. Results are written to `qc_report.json`; a failed export check marks the job as failed rather than silently accepting a broken output. These checks do not replace a human visual/audio review.
+
+
+### Styled captions and stricter checks
+
+The renderer now burns an ASS caption track into the final MP4. Captions use bold white text with a dark outline; keywords explicitly selected by the AI Director are highlighted in yellow. The SRT sidecar remains available for review and is independently checked for malformed, overlapping, empty or missing cues. The export is marked failed if the video stream, audio stream, expected portrait resolution, duration, file size or caption track fails validation.
