@@ -157,7 +157,7 @@ def build_segment_encode_command(source: Path, destination: Path, start: float, 
     ]
 
 
-def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None) -> Path:
+def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, revisions: dict[str, Any] | None = None, broll_dir: Path | None = None, creative_prompt: str = "") -> Path:
     revisions = revisions or load_revisions(None)
     require_tools()
     job_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -165,6 +165,14 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     job_dir.mkdir(parents=True, exist_ok=False)
     work_dir = work_root / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
+    creative_prompt = str(creative_prompt or "").strip()[:5000]
+    if creative_prompt:
+        (job_dir / "creative_direction.txt").write_text(creative_prompt, encoding="utf-8")
+        (job_dir / "creative_direction_status.json").write_text(json.dumps({
+            "status": "received_not_yet_rendered",
+            "prompt": creative_prompt,
+            "note": "Creative instructions are preserved with this job. Prompt-driven motion effects are not yet composited by this renderer."
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
 
     metadata = probe_video(source)
     duration = float(metadata["format"]["duration"])
@@ -326,6 +334,7 @@ def main() -> None:
     parser.add_argument("--retry-failed", action="store_true", help="Retry jobs previously marked failed.")
     parser.add_argument("--revision-file", type=Path, help="Optional JSON file with safe render adjustments.")
     parser.add_argument("--broll-dir", type=Path, help="Directory containing licensed/user-supplied shot_N video assets.")
+    parser.add_argument("--creative-prompt-file", type=Path, help="Optional text file containing user creative direction for this render.")
     args = parser.parse_args()
     args.input.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -338,6 +347,7 @@ def main() -> None:
         use_gpu = False
 
     revisions = load_revisions(args.revision_file)
+    creative_prompt = args.creative_prompt_file.read_text(encoding="utf-8") if args.creative_prompt_file and args.creative_prompt_file.exists() else ""
     print(f"Render revisions: {json.dumps(revisions, sort_keys=True)}", flush=True)
     state_file = args.state_file or (args.output / ".job_state.json")
     store = JobStore(state_file)
@@ -369,7 +379,7 @@ def main() -> None:
             print(f"\nNew video detected: {source.name}", flush=True)
             store.set(key, "processing", source=str(source.resolve()), size_bytes=size1)
             try:
-                result = render_job(source, args.output, args.work, use_gpu, revisions, args.broll_dir)
+                result = render_job(source, args.output, args.work, use_gpu, revisions, args.broll_dir, creative_prompt)
                 store.set(key, "completed", source=str(source.resolve()), output=str(result))
                 print(f"Completed: {result}", flush=True)
             except Exception as exc:
