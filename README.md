@@ -61,3 +61,15 @@ The current development branch adds two foundations for the next editing stages:
 - **Existing source support:** the Colab launcher passes the existing `HK_Video_Studio/Vid1.MP4` as a one-time seed input before continuing to watch `INPUT`.
 
 These changes are an engineering foundation, not a claim that semantic editing, gesture understanding, or automatic B-roll is complete. GitHub Actions runs Python compile and unit checks on pushes and pull requests.
+
+
+### AI Director (first implementation)
+
+Each processed video now receives a `director_plan.json` alongside the transcript and quality report. When a Colab secret named `GEMINI_API_KEY` is available, the optional Gemini director reviews transcript context and proposes:
+- a possible opening hook;
+- topic sections;
+- likely retakes and preferred takes for review;
+- candidate removals requiring approval;
+- B-roll ideas and caption emphasis.
+
+The plan is index-validated before it is saved. No dialogue is automatically deleted. If the API key is missing, the provider is unavailable, or the response cannot be validated, the worker writes a conservative local fallback plan instead. Set `GEMINI_MODEL` to select a model available to your API key; the default is `gemini-2.0-flash`.
