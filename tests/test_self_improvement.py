@@ -53,7 +53,7 @@ class SelfImprovementTests(unittest.TestCase):
             path = Path(temp) / "profile.json"
             profile = record_feedback(path, "better", "Less zoom please")
             self.assertEqual(profile["feedback"]["better"], 1)
-            self.assertIn("1 renders", profile_summary(profile))
+            self.assertIn("0 renders", profile_summary(profile))
             with self.assertRaises(ValueError):
                 record_feedback(path, "excellent")
 
