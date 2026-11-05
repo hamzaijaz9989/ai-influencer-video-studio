@@ -10,6 +10,30 @@ def normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", " ", text.lower()).strip()
 
 
+def _take_signals(segment: dict[str, Any]) -> dict[str, Any]:
+    """Estimate transcript-only completeness/readability signals, never delivery quality."""
+    text = str(segment.get("text", "")).strip()
+    words = re.findall(r"\\b[\\w’'-]+\\b", text)
+    duration = max(0.05, float(segment.get("end", 0)) - float(segment.get("start", 0)))
+    wpm = len(words) / duration * 60
+    normalized = text.lower()
+    false_start = bool(re.match(r"^(?:uh+|um+|so+|well+|and+|but+|i mean)\\b", normalized))
+    complete_ending = bool(re.search(r"[.!?…][\"'”’)]*$", text))
+    pace_plausible = 70 <= wpm <= 230
+    score = min(1.0, len(words) / 12) * 0.35
+    score += 0.25 if complete_ending else 0.0
+    score += 0.20 if pace_plausible else 0.0
+    score += 0.20 if not false_start else 0.0
+    return {
+        "word_count": len(words),
+        "duration_seconds": round(duration, 2),
+        "estimated_words_per_minute": round(wpm, 1),
+        "complete_sentence_punctuation": complete_ending,
+        "possible_false_start": false_start,
+        "transcript_completeness_score": round(score, 3),
+    }
+
+
 def review_repeated_lines(segments: list[dict[str, Any]], threshold: float = 0.82) -> list[dict[str, Any]]:
     """Find likely repeated/retaken lines for human/AI-director review.
 
@@ -36,6 +60,13 @@ def review_repeated_lines(segments: list[dict[str, Any]], threshold: float = 0.8
                     "similarity": round(score, 3),
                     "first_text": left.get("text", ""),
                     "second_text": right.get("text", ""),
+                    "first_signals": _take_signals(left),
+                    "second_signals": _take_signals(right),
+                    "review_first_segment_index": (
+                        i if _take_signals(left)["transcript_completeness_score"] >= _take_signals(right)["transcript_completeness_score"] + 0.15
+                        else j if _take_signals(right)["transcript_completeness_score"] >= _take_signals(left)["transcript_completeness_score"] + 0.15
+                        else None
+                    ),
                     "decision": "REVIEW_REQUIRED",
                     "reason": "Similar wording may indicate a retake, repetition, or intentional emphasis.",
                 })
@@ -47,5 +78,5 @@ def build_editorial_review(segments: list[dict[str, Any]], language: str | None 
         "status": "suggestions_only",
         "language": language,
         "repeated_line_candidates": review_repeated_lines(segments),
-        "policy": "No speech is removed based on transcript similarity alone. Review candidates before cutting.",
+        "policy": "No speech is removed based on transcript similarity alone. Transcript signals can prioritize review but cannot assess vocal delivery, facial expression, or factual accuracy.",
     }
