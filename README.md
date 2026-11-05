@@ -22,7 +22,7 @@ The notebook is a one-time session launcher, not a per-video editing checklist. 
 - This worker uses local FFmpeg and Whisper transcription; it does not require a paid API.
 - Large 4K videos can take significant time and temporary disk space.
 - The current baseline automatically transcribes, detects long silence, creates captions, renders vertical 9:16 output and checks the export.
-- Semantic best-take selection, face/gesture-aware reframing, AI-generated graphics and automatic B-roll sourcing are planned stages, not claims of the current baseline. The worker must not silently delete repeated dialogue just because transcript strings look similar.
+- The development branch includes transcript-only retake review signals, sampled frontal-face reframing, Director-triggered smart zoom, animated captions, and insertion of user-supplied B-roll. Gesture-aware editing, AI-generated graphics, automatic stock sourcing and fully autonomous semantic editing are not implemented.
 
 ## Folder layout
 
@@ -124,3 +124,8 @@ Export QC now also measures detected black-frame duration and audio peak level. 
 The Colab runner now creates a `BROLL` folder in the Drive project. Add licensed or otherwise authorized video clips named `shot_0.mp4`, `shot_1.mp4`, etc.; the number corresponds to the AI Director's transcript segment index in `broll_shotlist.json`. When a matching suggestion and asset exist, the renderer inserts that clip full-frame over the corresponding edited-timeline interval while retaining the original narration/audio. Short assets are looped to cover the target interval. Unmatched suggestions remain listed for later sourcing.
 
 This is deterministic filename-to-shot matching, not semantic recognition of clip contents. Check that each supplied clip actually illustrates its assigned suggestion and that you have rights to use it. The studio does not scrape or download stock footage.
+
+
+### Transcript-only retake comparison (development branch)
+
+Repeated-line candidates now include per-take word count, duration, estimated words per minute, sentence-ending punctuation, possible false-start markers and a heuristic transcript-completeness score. A take is only prioritized for review when its score leads by a clear margin. These signals cannot judge vocal delivery, facial expression, factual correctness or whether a repeated line is intentional. They never trigger automatic dialogue deletion.
