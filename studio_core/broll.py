@@ -21,7 +21,12 @@ def build_broll_shotlist(
 ) -> list[dict[str, Any]]:
     """Return safe B-roll requests; never downloads or inserts unlicensed media."""
     shots = []
-    for suggestion in director_plan.get("broll_suggestions", []):
+    suggestions = director_plan.get("broll_suggestions", [])
+    if not isinstance(suggestions, list):
+        return shots
+    for suggestion in suggestions:
+        if not isinstance(suggestion, dict):
+            continue
         index = suggestion.get("segment_index")
         if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(segments):
             continue
@@ -30,6 +35,9 @@ def build_broll_shotlist(
             source_start = float(segment["start"])
             source_end = float(segment["end"])
         except (KeyError, TypeError, ValueError):
+            continue
+        # Do not stretch a B-roll overlay across unrelated footage after a cut.
+        if any(source_start < cut_end and source_end > cut_start for cut_start, cut_end in cuts):
             continue
         start = _edited_time(source_start, cuts)
         end = _edited_time(source_end, cuts)
