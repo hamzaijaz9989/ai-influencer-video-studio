@@ -25,7 +25,7 @@ from studio_core.smart_zoom import build_smart_zoom_expression
 from studio_core.broll import build_broll_shotlist
 from studio_core.revisions import load_revisions
 from studio_core.broll_assets import resolve_broll_assets, build_broll_filter
-from studio_core.creative_direction import interpret_creative_direction, build_drawtext_filter
+from studio_core.creative_direction import interpret_creative_direction, build_drawtext_filter, apply_neck_orbit
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".avi"}
 
@@ -285,6 +285,8 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
         "-movflags", "+faststart", str(final_path)
     ])
     command(ffmpeg_args)
+    if creative_plan and creative_plan.get("status") == "supported_2d_approximation":
+        apply_neck_orbit(str(final_path), creative_plan["effect"])
 
     qc_probe = json.loads(command([
         "ffprobe", "-v", "error", "-show_entries",
