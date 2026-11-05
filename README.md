@@ -50,3 +50,14 @@ python studio.py --input ./INPUT --output ./OUTPUT --watch
 ```
 
 The local watcher processes videos placed in the input directory. In Colab, Drive is mounted automatically by the notebook.
+
+
+## AI Director foundation (in progress)
+
+The current development branch adds two foundations for the next editing stages:
+
+- **Persistent job tracking:** completed inputs are remembered in `OUTPUT/.job_state.json`, so restarting Colab does not automatically render the same unchanged source again. Failed jobs are recorded and can be retried with `--retry-failed`.
+- **Editorial review suggestions:** `editorial_review.json` flags potentially repeated transcript lines for review. Similarity is not treated as proof of a bad take, so no speech is automatically removed by this detector.
+- **Existing source support:** the Colab launcher passes the existing `HK_Video_Studio/Vid1.MP4` as a one-time seed input before continuing to watch `INPUT`.
+
+These changes are an engineering foundation, not a claim that semantic editing, gesture understanding, or automatic B-roll is complete. GitHub Actions runs Python compile and unit checks on pushes and pull requests.
