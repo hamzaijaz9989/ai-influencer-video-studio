@@ -286,7 +286,16 @@ def render_job(source: Path, output_root: Path, work_root: Path, use_gpu: bool, 
     ])
     command(ffmpeg_args)
     if creative_plan and creative_plan.get("status") == "supported_2d_approximation":
-        apply_neck_orbit(str(final_path), creative_plan["effect"])
+        try:
+            apply_neck_orbit(str(final_path), creative_plan["effect"])
+            creative_plan["render_status"] = "rendered_2d_face_follow"
+            creative_plan["render_note"] = "2D face-following orbit composited; no 3D perspective or depth-aware occlusion."
+        except Exception as exc:
+            creative_plan["render_status"] = "tracking_failed_original_kept"
+            creative_plan["render_note"] = str(exc)[:1000]
+        (job_dir / "creative_direction_status.json").write_text(
+            json.dumps(creative_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
 
     qc_probe = json.loads(command([
         "ffprobe", "-v", "error", "-show_entries",
