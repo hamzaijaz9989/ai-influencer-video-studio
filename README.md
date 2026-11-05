@@ -141,3 +141,16 @@ Repeated-line candidates now include per-take word count, duration, estimated wo
 ### Render pipeline integration coverage
 
 The automated test suite now includes a synthetic-media integration test that exercises the complete `render_job` path using a synthetic 4K portrait HEVC source: source probing, mocked transcription and visual analysis, silence timeline handling, caption generation, FFmpeg render, export QC and report generation. A separate FFmpeg integration test checks that retained source intervals are encoded to their requested duration. These synthetic tests improve regression coverage but do not replace rendering and reviewing the original 4K creator footage.
+
+
+## Local self-improvement engine
+
+The development branch now maintains `OUTPUT/.learning_profile.json` across editing sessions. It incrementally collects:
+- Broad style vocabulary from creative prompts (not the full prompt text).
+- Aggregate source-video signals such as sampled exposure and face-tracking success.
+- Export QC outcomes and recurring advisory warnings.
+- Explicit user feedback from the Review & Export tab (better / about right / worse).
+
+The next render uses this history together with the current video's analysis to make bounded visual-intensity adjustments. For example, unreliable face tracking reduces automatic punch-in strength; repeated preference for subtle/smooth edits nudges it down. User-provided silence settings are preserved and are never changed by learning. Dialogue is never deleted by the learning engine.
+
+This is local preference and settings adaptation—not automatic model-weight training, self-modifying code, or a guarantee that every future edit is better. The profile stores aggregate signals and style terms, not source video or transcripts. The user can inspect or delete `OUTPUT/.learning_profile.json` to reset learned preferences. Automated tests cover persistence, feedback, safe bounds and adaptive decisions.
