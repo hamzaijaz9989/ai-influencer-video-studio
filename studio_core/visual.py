@@ -61,10 +61,12 @@ def analyze_video(path: Path, sample_fps: float = 0.5, max_width: int = 640) -> 
                 # Convert half-resolution detector coordinates back to frame space.
                 box = [int(x * 2), int(y * 2), int(w * 2), int(h * 2)]
                 boxes.append(box)
+            face_center = None
             if boxes:
                 largest = max(boxes, key=lambda b: b[2] * b[3])
                 center = (largest[0] + largest[2] / 2) / width
-                face_centers.append(float(center))
+                face_center = float(center)
+                face_centers.append(face_center)
             brightness = float(gray.mean())
             contrast = float(gray.std())
             hist = cv2.calcHist([gray], [0], None, [32], [0, 256])
@@ -79,6 +81,8 @@ def analyze_video(path: Path, sample_fps: float = 0.5, max_width: int = 640) -> 
                 "brightness_mean": round(brightness, 2),
                 "contrast_std": round(contrast, 2),
                 "face_count": len(boxes),
+                "face_center_x": face_center,
+                "frame_width": width,
                 "face_boxes": boxes,
             })
 
